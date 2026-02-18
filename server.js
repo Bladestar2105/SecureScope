@@ -4,6 +4,7 @@ const express = require('express');
 const session = require('express-session');
 const helmet = require('helmet');
 const cors = require('cors');
+const compression = require('compression');
 const path = require('path');
 const { initializeDatabase, closeDatabase } = require('./config/database');
 const { sessionTimeout, csrfProtection } = require('./middleware/auth');
@@ -50,6 +51,9 @@ app.use(cors({
     origin: process.env.NODE_ENV === 'production' ? false : true,
     credentials: true
 }));
+
+// Compression for response optimization (Reduces text payload sizes by ~80%)
+app.use(compression());
 
 // Body parsing
 app.use(express.json({ limit: '50mb' }));
