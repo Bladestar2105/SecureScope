@@ -10,6 +10,126 @@ const PDFDocument = require('pdfkit');
 // All scan routes require authentication
 router.use(requireAuth);
 
+// GET /api/scan/dashboard - Dashboard stats
+router.get('/dashboard', (req, res) => {
+    try {
+        const db = require('../config/database').getDatabase();
+        const userId = req.session.userId;
+
+        const totalScans = db.prepare('SELECT COUNT(*) as c FROM scans WHERE user_id = ?').get(userId).c;
+        const completedScans = db.prepare("SELECT COUNT(*) as c FROM scans WHERE user_id = ? AND status = 'completed'").get(userId).c;
+
+        // Count critical ports from all completed scans
+        const criticalPorts = db.prepare(`
+            SELECT COUNT(*) as c FROM scan_results sr
+            JOIN scans s ON sr.scan_id = s.id
+            WHERE s.user_id = ? AND sr.risk_level = 'critical'
+        `).get(userId).c;
+
+        // Count total CVE matches
+        let totalVulnerabilities = 0;
+        try {
+            totalVulnerabilities = db.prepare(`
+                SELECT COUNT(*) as c FROM scan_vulnerabilities sv
+                JOIN scans s ON sv.scan_id = s.id
+                WHERE s.user_id = ?
+            `).get(userId).c;
+        } catch (e) {}
+
+        // Active scans
+        const activeScansCount = scannerService.getActiveScanCount();
+        const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
+
+        // Recent scans with result counts
+        const recentScans = db.prepare(`
+            SELECT s.*, COUNT(sr.id) as result_count
+            FROM scans s
+            LEFT JOIN scan_results sr ON s.id = sr.scan_id
+            WHERE s.user_id = ?
+            GROUP BY s.id
+            ORDER BY s.started_at DESC LIMIT 10
+        `).all(userId);
+
+        // Add vuln_count to recent scans
+        for (const scan of recentScans) {
+            try {
+                scan.vuln_count = db.prepare('SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ?').get(scan.id).c;
+            } catch (e) {
+                scan.vuln_count = 0;
+            }
+        }
+
+        res.json({
+            totalScans,
+            completedScans,
+            criticalPorts,
+            totalVulnerabilities,
+            activeScans: activeScansCount,
+            activeScan: activeScanRow || null,
+            recentScans
+        });
+    } catch (err) {
+        logger.error('Dashboard error:', err);
+        res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+});
+
+// GET /api/scan/:id - Get single scan with results
+router.get('/:id(\\d+)', (req, res) => {
+    try {
+        const scanId = parseInt(req.params.id);
+        const scan = scannerService.getScanStatus(scanId);
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+        if (scan.user_id !== req.session.userId) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
+        const page = parseInt(req.query.page) || 1;
+        const limit = Math.min(parseInt(req.query.limit) || 50, 100);
+        const data = scannerService.getScanResults(scanId, page, limit);
+        const cveSummary = scannerService.getScanCVESummary(scanId);
+
+        res.json({ scan, ...data, cveSummary });
+    } catch (err) {
+        logger.error('Scan get error:', err);
+        res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+});
+
+// DELETE /api/scan/:id - Delete a scan
+router.delete('/:id(\\d+)', (req, res) => {
+    try {
+        const scanId = parseInt(req.params.id);
+        const db = require('../config/database').getDatabase();
+
+        const scan = scannerService.getScanStatus(scanId);
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+        if (scan.user_id !== req.session.userId) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+        if (scan.status === 'running') {
+            return res.status(400).json({ error: 'Laufender Scan kann nicht gelöscht werden' });
+        }
+
+        // Delete scan and all related data (CASCADE)
+        db.prepare('DELETE FROM scan_vulnerabilities WHERE scan_id = ?').run(scanId);
+        db.prepare('DELETE FROM scan_fingerprints WHERE scan_id = ?').run(scanId);
+        db.prepare('DELETE FROM scan_exploits WHERE scan_id = ?').run(scanId);
+        db.prepare('DELETE FROM scan_results WHERE scan_id = ?').run(scanId);
+        db.prepare('DELETE FROM scans WHERE id = ?').run(scanId);
+
+        UserService.logAudit(req.session.userId, 'SCAN_DELETED', { scanId }, req.ip);
+        res.json({ success: true, message: 'Scan gelöscht' });
+    } catch (err) {
+        logger.error('Scan delete error:', err);
+        res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+});
+
 // POST /api/scan/start - Start a new scan
 router.post('/start', scanLimiter, async (req, res) => {
     try {
@@ -128,9 +248,36 @@ router.get('/results/:id', (req, res) => {
         const limit = Math.min(parseInt(req.query.limit) || 50, 100);
 
         const data = scannerService.getScanResults(scanId, page, limit);
-        res.json({ scan, ...data });
+        const cveSummary = scannerService.getScanCVESummary(scanId);
+        res.json({ scan, ...data, cveSummary });
     } catch (err) {
         logger.error('Scan results error:', err);
+        res.status(500).json({ error: 'Interner Serverfehler' });
+    }
+});
+
+// GET /api/scan/cves/:id - Get CVE matches for a scan
+router.get('/cves/:id', (req, res) => {
+    try {
+        const scanId = parseInt(req.params.id);
+        if (isNaN(scanId)) {
+            return res.status(400).json({ error: 'Ungültige Scan-ID' });
+        }
+
+        const scan = scannerService.getScanStatus(scanId);
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+
+        if (scan.user_id !== req.session.userId) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
+        const cves = scannerService.getScanCVEs(scanId);
+        const summary = scannerService.getScanCVESummary(scanId);
+        res.json({ cves, summary });
+    } catch (err) {
+        logger.error('Scan CVE error:', err);
         res.status(500).json({ error: 'Interner Serverfehler' });
     }
 });
@@ -288,6 +435,11 @@ function exportJSON(res, scan, results) {
             port: r.port,
             protocol: r.protocol,
             service: r.service,
+            product: r.service_product || null,
+            version: r.service_version || null,
+            banner: r.banner || null,
+            cpe: r.service_cpe || null,
+            os: r.os_name || null,
             state: r.state,
             riskLevel: r.risk_level
         }))
@@ -299,9 +451,10 @@ function exportJSON(res, scan, results) {
 }
 
 function exportCSV(res, scan, results) {
-    const header = 'IP-Adresse,Port,Protokoll,Service,Status,Risiko';
+    const header = 'IP-Adresse,Port,Protokoll,Service,Produkt,Version,Banner,CPE,OS,Status,Risiko';
+    const esc = (s) => s ? `"${String(s).replace(/"/g, '""')}"` : '';
     const rows = results.map(r =>
-        `${r.ip_address},${r.port},${r.protocol},${r.service},${r.state},${r.risk_level}`
+        `${r.ip_address},${r.port},${r.protocol},${esc(r.service)},${esc(r.service_product)},${esc(r.service_version)},${esc(r.banner)},${esc(r.service_cpe)},${esc(r.os_name)},${r.state},${r.risk_level}`
     );
 
     const csv = [
@@ -367,8 +520,8 @@ function exportPDF(res, scan, results) {
 
         // Table header
         const tableTop = doc.y;
-        const colWidths = [100, 60, 70, 100, 60, 80];
-        const headers = ['IP-Adresse', 'Port', 'Protokoll', 'Service', 'Status', 'Risiko'];
+        const colWidths = [80, 45, 80, 140, 60, 60];
+        const headers = ['IP-Adresse', 'Port', 'Service', 'Produkt/Version', 'Status', 'Risiko'];
 
         doc.fontSize(9).font('Helvetica-Bold');
         let xPos = 50;
@@ -390,7 +543,9 @@ function exportPDF(res, scan, results) {
             }
 
             xPos = 50;
-            const rowData = [r.ip_address, r.port.toString(), r.protocol, r.service, r.state, r.risk_level];
+            let productVersion = r.banner || r.service_product || '';
+            if (productVersion.length > 30) productVersion = productVersion.substring(0, 30) + '...';
+            const rowData = [r.ip_address, r.port.toString(), r.service || '', productVersion, r.state, r.risk_level];
 
             // Color based on risk
             if (r.risk_level === 'critical') doc.fillColor('red');
