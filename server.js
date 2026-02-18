@@ -10,6 +10,11 @@ const { sessionTimeout, csrfProtection } = require('./middleware/auth');
 const { apiLimiter } = require('./middleware/rateLimit');
 const authRoutes = require('./routes/auth');
 const scanRoutes = require('./routes/scan');
+const vulnerabilityRoutes = require('./routes/vulnerabilities');
+const userRoutes = require('./routes/users');
+const scheduleRoutes = require('./routes/schedules');
+const notificationRoutes = require('./routes/notifications');
+const schedulerService = require('./services/schedulerService');
 const logger = require('./services/logger');
 
 const app = express();
@@ -72,6 +77,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 // API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/scan', scanRoutes);
+app.use('/api/vulnerabilities', vulnerabilityRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/schedules', scheduleRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Serve login page as default
 app.get('/', (req, res) => {
@@ -100,6 +109,10 @@ function startServer() {
         initializeDatabase();
         logger.info('Database initialized');
 
+        // Initialize scheduler for cron jobs
+        schedulerService.initialize();
+        logger.info('Scheduler initialized');
+
         const server = app.listen(PORT, () => {
             logger.info(`SecureScope Server läuft auf Port ${PORT}`);
             logger.info(`Umgebung: ${process.env.NODE_ENV || 'development'}`);
@@ -109,6 +122,7 @@ function startServer() {
         // Graceful shutdown
         const shutdown = (signal) => {
             logger.info(`${signal} empfangen. Server wird heruntergefahren...`);
+            schedulerService.shutdown();
             server.close(() => {
                 closeDatabase();
                 logger.info('Server erfolgreich beendet');

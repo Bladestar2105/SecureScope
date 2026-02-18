@@ -32,6 +32,8 @@
     "helmet": "^8.0.0",
     "ip-cidr": "^4.0.2",
     "json2csv": "^5.0.7",
+    "node-cron": "^3.0.3",
+    "nodemailer": "^6.10.1",
     "pdfkit": "^0.16.0",
     "uuid": "^11.0.5",
     "winston": "^3.17.0",

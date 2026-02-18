@@ -1,6 +1,8 @@
 const evilscan = require('evilscan');
 const { getDatabase } = require('../config/database');
 const logger = require('./logger');
+const VulnerabilityService = require('./vulnerabilityService');
+const emailService = require('./emailService');
 const { EventEmitter } = require('events');
 const IPCIDR = require('ip-cidr');
 
@@ -307,9 +309,42 @@ class ScannerService extends EventEmitter {
                 'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).run(finalStatus, scanId);
 
-            this.emit('scanComplete', { scanId, status: finalStatus, resultCount: results.length });
-            logger.info(`Scan ${scanId} ${finalStatus} with ${results.length} results`);
-            logger.audit('SCAN_COMPLETED', { scanId, status: finalStatus, resultCount: results.length });
+            // Match vulnerabilities after scan completion
+            let vulnMatches = [];
+            if (finalStatus === 'completed' && results.length > 0) {
+                try {
+                    vulnMatches = VulnerabilityService.matchScanResults(scanId);
+                    logger.info(`Scan ${scanId}: ${vulnMatches.length} vulnerability matches found`);
+                } catch (vulnErr) {
+                    logger.error(`Vulnerability matching failed for scan ${scanId}:`, vulnErr);
+                }
+            }
+
+            const vulnSummary = VulnerabilityService.getScanVulnerabilitySummary(scanId);
+
+            this.emit('scanComplete', { 
+                scanId, status: finalStatus, resultCount: results.length,
+                vulnerabilities: vulnSummary
+            });
+            logger.info(`Scan ${scanId} ${finalStatus} with ${results.length} results, ${vulnMatches.length} vulnerabilities`);
+            logger.audit('SCAN_COMPLETED', { scanId, status: finalStatus, resultCount: results.length, vulnCount: vulnMatches.length });
+
+            // Send email notifications
+            if (finalStatus === 'completed') {
+                const scan = this.getScanStatus(scanId);
+                try {
+                    await emailService.notifyScanComplete(scan.user_id, scan, results.length, vulnSummary);
+                    
+                    // Send critical alert if critical vulnerabilities found
+                    if (vulnSummary.critical > 0) {
+                        const criticalVulns = VulnerabilityService.getScanVulnerabilities(scanId)
+                            .filter(v => v.severity === 'critical');
+                        await emailService.notifyCriticalFound(scan.user_id, scan, criticalVulns);
+                    }
+                } catch (emailErr) {
+                    logger.error(`Email notification failed for scan ${scanId}:`, emailErr);
+                }
+            }
 
         } catch (err) {
             logger.error(`Scan ${scanId} failed:`, err);
