@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="de" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureScope - Login</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛡️</text></svg>">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+<script src="https://sites.super.myninja.ai/_assets/ninja-daytona-script.js"></script>
+</head>
+<body>
+    <div class="login-wrapper">
+        <div class="login-container">
+            <div class="login-card">
+                <div class="login-logo">
+                    <div class="logo-icon">🛡️</div>
+                    <h1>SecureScope</h1>
+                    <p>Network Security Audit Tool</p>
+                </div>
+
+                <!-- Login Form -->
+                <form id="loginForm" autocomplete="off">
+                    <div class="form-group">
+                        <label for="username">Benutzername</label>
+                        <div class="input-group">
+                            <i class="bi bi-person input-icon"></i>
+                            <input type="text" id="username" class="form-control" placeholder="Benutzername eingeben" required autofocus>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Passwort</label>
+                        <div class="input-group">
+                            <i class="bi bi-lock input-icon"></i>
+                            <input type="password" id="password" class="form-control" placeholder="Passwort eingeben" required>
+                        </div>
+                    </div>
+                    <div id="loginError" class="hidden" style="color: var(--accent-red); font-size: 0.8125rem; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--accent-red-bg); border-radius: var(--radius-sm);">
+                    </div>
+                    <button type="submit" id="loginBtn" class="btn btn-primary btn-block btn-lg">
+                        <span id="loginBtnText">Anmelden</span>
+                        <span id="loginSpinner" class="spinner hidden"></span>
+                    </button>
+                </form>
+
+                <!-- Password Change Form (hidden by default) -->
+                <form id="passwordChangeForm" class="hidden" autocomplete="off">
+                    <div style="text-align: center; margin-bottom: 1.5rem;">
+                        <i class="bi bi-shield-exclamation" style="font-size: 2rem; color: var(--accent-yellow);"></i>
+                        <h3 style="margin-top: 0.5rem; font-size: 1.125rem;">Passwortänderung erforderlich</h3>
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+                            Bitte ändern Sie Ihr Standard-Passwort
+                        </p>
+                    </div>
+                    <div class="form-group">
+                        <label for="currentPassword">Aktuelles Passwort</label>
+                        <div class="input-group">
+                            <i class="bi bi-lock input-icon"></i>
+                            <input type="password" id="currentPassword" class="form-control" placeholder="Aktuelles Passwort" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="newPassword">Neues Passwort</label>
+                        <div class="input-group">
+                            <i class="bi bi-key input-icon"></i>
+                            <input type="password" id="newPassword" class="form-control" placeholder="Neues Passwort" required>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirmPassword">Passwort bestätigen</label>
+                        <div class="input-group">
+                            <i class="bi bi-key-fill input-icon"></i>
+                            <input type="password" id="confirmPassword" class="form-control" placeholder="Passwort wiederholen" required>
+                        </div>
+                    </div>
+                    <ul class="password-requirements" id="passwordRequirements">
+                        <li id="reqLength">Mindestens 8 Zeichen</li>
+                        <li id="reqUpper">Mindestens ein Großbuchstabe</li>
+                        <li id="reqLower">Mindestens ein Kleinbuchstabe</li>
+                        <li id="reqNumber">Mindestens eine Zahl</li>
+                        <li id="reqMatch">Passwörter stimmen überein</li>
+                    </ul>
+                    <div id="pwChangeError" class="hidden" style="color: var(--accent-red); font-size: 0.8125rem; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--accent-red-bg); border-radius: var(--radius-sm);">
+                    </div>
+                    <button type="submit" id="pwChangeBtn" class="btn btn-success btn-block btn-lg mt-2">
+                        <span id="pwChangeBtnText">Passwort ändern</span>
+                        <span id="pwChangeSpinner" class="spinner hidden"></span>
+                    </button>
+                </form>
+            </div>
+
+            <p style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: var(--text-muted);">
+                SecureScope v1.0 &mdash; Network Security Audit Tool
+            </p>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/login.js"></script>
+</body>
+</html>
