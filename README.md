@@ -86,8 +86,8 @@ npm start
 ### Mit Docker Compose (empfohlen)
 
 ```bash
-# Starten
-docker-compose up -d
+# Bauen und Starten im Hintergrund
+docker-compose up -d --build
 
 # Logs anzeigen
 docker-compose logs -f securescope

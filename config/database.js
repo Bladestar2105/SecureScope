@@ -533,7 +533,7 @@ function initializeDatabase() {
         const passwordHash = bcrypt.hashSync('admin', saltRounds);
         const result = database.prepare(
             'INSERT INTO users (username, password_hash, force_password_change) VALUES (?, ?, ?)'
-        ).run('admin', passwordHash, 0);
+        ).run('admin', passwordHash, 1);
 
         // Assign admin role
         const adminRoleId = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
