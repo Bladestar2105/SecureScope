@@ -14,6 +14,12 @@ const vulnerabilityRoutes = require('./routes/vulnerabilities');
 const userRoutes = require('./routes/users');
 const scheduleRoutes = require('./routes/schedules');
 const notificationRoutes = require('./routes/notifications');
+const fingerprintRoutes = require('./routes/fingerprints');
+const exploitRoutes = require('./routes/exploits');
+const attackChainRoutes = require('./routes/attackChains');
+const auditRoutes = require('./routes/audits');
+const credentialRoutes = require('./routes/credentials');
+const dbUpdateRoutes = require('./routes/dbUpdate');
 const schedulerService = require('./services/schedulerService');
 const logger = require('./services/logger');
 
@@ -28,7 +34,8 @@ app.use(helmet({
     contentSecurityPolicy: {
         directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://sites.super.myninja.ai"],
+            scriptSrcAttr: ["'unsafe-inline'"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
             fontSrc: ["'self'", "https://cdn.jsdelivr.net", "https://cdnjs.cloudflare.com"],
             imgSrc: ["'self'", "data:"],
@@ -45,8 +52,8 @@ app.use(cors({
 }));
 
 // Body parsing
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Session configuration
 app.use(session({
@@ -81,6 +88,12 @@ app.use('/api/vulnerabilities', vulnerabilityRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/schedules', scheduleRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/fingerprints', fingerprintRoutes);
+app.use('/api/exploits', exploitRoutes);
+app.use('/api/attack-chains', attackChainRoutes);
+app.use('/api/audits', auditRoutes);
+app.use('/api/credentials', credentialRoutes);
+app.use('/api/db-update', dbUpdateRoutes);
 
 // Serve login page as default
 app.get('/', (req, res) => {
