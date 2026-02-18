@@ -35,8 +35,26 @@
                 </div>
                 <div class="nav-section">
                     <div class="nav-section-title">Sicherheit</div>
-                    <div class="nav-item" data-view="vulnerabilities" onclick="switchView('vulnerabilities')">
+                    <div class="nav-item hidden" data-view="vulnerabilities" onclick="switchView('vulnerabilities')">
                         <i class="bi bi-bug"></i><span>Schwachstellen</span>
+                    </div>
+                    <div class="nav-item" data-view="cve" onclick="switchView('cve')">
+                        <i class="bi bi-list-check"></i><span>CVE-Listen</span>
+                    </div>
+                    <div class="nav-item" data-view="fingerprints" onclick="switchView('fingerprints')">
+                        <i class="bi bi-fingerprint"></i><span>Fingerprinting</span>
+                    </div>
+                    <div class="nav-item" data-view="exploits" onclick="switchView('exploits')">
+                        <i class="bi bi-database-exclamation"></i><span>Exploit-DB</span>
+                    </div>
+                    <div class="nav-item" data-view="attack-chains" onclick="switchView('attack-chains')">
+                        <i class="bi bi-diagram-3"></i><span>Angriffsketten</span>
+                    </div>
+                    <div class="nav-item" data-view="audits" onclick="switchView('audits')">
+                        <i class="bi bi-clipboard-check"></i><span>Security-Audit</span>
+                    </div>
+                    <div class="nav-item" data-view="credentials" onclick="switchView('credentials')">
+                        <i class="bi bi-shield-lock"></i><span>Credentials</span>
                     </div>
                     <div class="nav-item" data-view="schedules" onclick="switchView('schedules')">
                         <i class="bi bi-calendar-check"></i><span>Geplante Scans</span>
@@ -174,19 +192,18 @@
                                 <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-shield-exclamation"></i></div><div class="stat-info"><h4>Warnung</h4><div class="stat-value" id="resultWarning">0</div></div></div>
                                 <div class="stat-card"><div class="stat-icon green"><i class="bi bi-shield-check"></i></div><div class="stat-info"><h4>Sicher</h4><div class="stat-value" id="resultSafe">0</div></div></div>
                             </div>
-                            <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service</th><th>Status</th><th>Risiko</th></tr></thead>
+                            <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service / Version</th><th>Status</th><th>Risiko</th></tr></thead>
                             <tbody id="resultsTableBody"></tbody></table></div>
                             <div class="empty-state hidden" id="resultsEmpty"><i class="bi bi-shield-check"></i><h4>Keine offenen Ports gefunden</h4></div>
                             <div id="resultsPagination" class="hidden"><div class="pagination" id="resultsPaginationBtns"></div><div class="pagination-info" id="resultsPaginationInfo"></div></div>
                         </div>
                     </div>
-                    <!-- Vulnerability matches for this scan -->
                     <div class="card" id="scanVulnPanel">
-                        <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Gefundene Schwachstellen</h3></div>
+                        <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> CVE-Matches (Service-Detection)</h3></div>
                         <div class="card-body">
-                            <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Schwachstelle</th><th>Severity</th><th>CVSS</th></tr></thead>
+                            <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Beschreibung</th><th>Erkannter Service</th><th>Severity</th><th>CVSS</th><th>Konfidenz</th></tr></thead>
                             <tbody id="scanVulnTableBody"></tbody></table></div>
-                            <div class="empty-state hidden" id="scanVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine bekannten Schwachstellen</h4></div>
+                            <div class="empty-state hidden" id="scanVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine CVE-Matches gefunden</h4><p>Stellen Sie sicher, dass die CVE-Datenbank synchronisiert ist.</p></div>
                         </div>
                     </div>
                 </div>
@@ -243,7 +260,8 @@
             <!-- ========== VIEW: Vulnerabilities ========== -->
             <section class="view-section" id="view-vulnerabilities">
                 <div class="card">
-                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Schwachstellen-Datenbank</h3></div>
+                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Schwachstellen-Datenbank</h3>
+                        <button class="btn btn-outline btn-sm" onclick="syncVulnerabilityDB()"><i class="bi bi-arrow-repeat"></i> DB aktualisieren</button></div>
                     <div class="card-body">
                         <div class="filters-bar">
                             <div class="form-group"><label>Severity</label>
@@ -256,6 +274,310 @@
                         <div class="loading-overlay hidden" id="vulnLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Schwachstellen...</span></div>
                         <div class="empty-state hidden" id="vulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine Schwachstellen gefunden</h4></div>
                         <div id="vulnPagination" class="hidden"><div class="pagination" id="vulnPaginationBtns"></div><div class="pagination-info" id="vulnPaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: CVE-Listen ========== -->
+            <section class="view-section" id="view-cve">
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-list-check"></i></div><div class="stat-info"><h4>CVEs Gesamt</h4><div class="stat-value" id="cveStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-exclamation-octagon"></i></div><div class="stat-info"><h4>Kritisch</h4><div class="stat-value" id="cveStatCritical">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-info"><h4>Hoch</h4><div class="stat-value" id="cveStatHigh">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-clock-history"></i></div><div class="stat-info"><h4>Letztes Update</h4><div class="stat-value" id="cveStatLastSync" style="font-size:.85rem">Nie</div></div></div>
+                </div>
+                <div class="card mb-3">
+                    <div class="card-header d-flex justify-between align-center">
+                        <h3><i class="bi bi-cloud-download mr-1"></i> CVE-Datenquelle</h3>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-primary btn-sm" onclick="syncCVEDB()" id="cveSyncBtn"><i class="bi bi-cloud-download"></i> CVE-Listen herunterladen</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
+                            <i class="bi bi-info-circle mr-1"></i> Quelle: <a href="https://github.com/CVEProject/cvelistV5" target="_blank" style="color:var(--accent-blue)">CVEProject/cvelistV5</a> (GitHub) — Offizielle CVE-Liste im JSON-Format von cve.org. Enthält alle veröffentlichten CVE-Einträge.
+                        </p>
+                        <div id="cveSyncProgress" class="hidden" style="margin-bottom:.75rem">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                                <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
+                                    <div id="cveSyncProgressBar" style="width:0%;height:100%;background:var(--accent-blue);transition:width .3s;border-radius:var(--radius-sm)"></div>
+                                </div>
+                                <span id="cveSyncProgressPct" style="font-size:.8rem;color:var(--text-secondary);min-width:40px">0%</span>
+                            </div>
+                            <div id="cveSyncProgressMsg" style="font-size:.8rem;color:var(--text-secondary)"></div>
+                        </div>
+                        <div id="cveSyncStatus" class="hidden" style="padding:.75rem;background:var(--accent-green-bg);border:1px solid rgba(34,197,94,.2);border-radius:var(--radius-sm);font-size:.85rem;color:var(--accent-green)">
+                            <i class="bi bi-check-circle mr-1"></i><span id="cveSyncStatusText"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-list-check mr-1"></i> CVE-Datenbank</h3></div>
+                    <div class="card-body">
+                        <div class="filter-bar mb-2">
+                            <div class="form-group"><label>Severity</label>
+                                <select id="cveFilterSeverity" class="form-control" onchange="loadCVEs()"><option value="">Alle</option><option value="critical">Kritisch</option><option value="high">Hoch</option><option value="medium">Mittel</option><option value="low">Niedrig</option></select></div>
+                            <div class="form-group"><label>Jahr</label>
+                                <select id="cveFilterYear" class="form-control" onchange="loadCVEs()"><option value="">Alle</option></select></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="cveFilterSearch" class="form-control" placeholder="CVE-ID, Beschreibung, Produkt..." oninput="debounce(loadCVEs,500)()"></div>
+                        </div>
+                        <table class="data-table"><thead><tr><th>CVE-ID</th><th>TITEL</th><th>SEVERITY</th><th>CVSS</th><th>PRODUKTE</th><th>VERÖFFENTLICHT</th></tr></thead>
+                        <tbody id="cveTableBody"></tbody></table>
+                        <div class="loading-overlay hidden" id="cveLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade CVEs...</span></div>
+                        <div class="empty-state hidden" id="cveEmpty"><i class="bi bi-list-check"></i><h4>Keine CVEs gefunden</h4><p>Klicken Sie auf "CVE-Listen herunterladen" um die Datenbank zu füllen.</p></div>
+                        <div id="cvePagination" class="hidden"><div class="pagination" id="cvePaginationBtns"></div><div class="pagination-info" id="cvePaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Fingerprinting ========== -->
+            <section class="view-section" id="view-fingerprints">
+                <!-- Stats -->
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-fingerprint"></i></div><div class="stat-info"><h4>Fingerprints Gesamt</h4><div class="stat-value" id="fpStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon green"><i class="bi bi-hdd-network"></i></div><div class="stat-info"><h4>Services</h4><div class="stat-value" id="fpStatServices">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-pc-display"></i></div><div class="stat-info"><h4>Betriebssysteme</h4><div class="stat-value" id="fpStatOS">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-clock-history"></i></div><div class="stat-info"><h4>Letzte Aktualisierung</h4><div class="stat-value" id="fpStatLastUpdate" style="font-size:.85rem">-</div></div></div>
+                </div>
+                <!-- DB Update Panel -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3><i class="bi bi-arrow-repeat mr-1"></i> Datenbank-Verwaltung</h3>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-primary btn-sm" onclick="syncFingerprintDB()" id="fpSyncBtn"><i class="bi bi-cloud-download"></i> Nmap-Daten herunterladen</button>
+                            <button class="btn btn-outline btn-sm" onclick="showFingerprintModal()"><i class="bi bi-plus"></i> Manuell hinzufügen</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
+                            <i class="bi bi-info-circle mr-1"></i> Quellen: <a href="https://github.com/nmap/nmap/blob/master/nmap-services" target="_blank" style="color:var(--accent-blue)">nmap-services</a>, <a href="https://github.com/nmap/nmap/blob/master/nmap-os-db" target="_blank" style="color:var(--accent-blue)">nmap-os-db</a>, <a href="https://github.com/nmap/nmap/blob/master/nmap-service-probes" target="_blank" style="color:var(--accent-blue)">nmap-service-probes</a> — Offizielle Nmap-Datenbanken für Service- und OS-Erkennung.
+                        </p>
+                        <div id="fpSyncProgress" class="hidden" style="margin-bottom:.75rem">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                                <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
+                                    <div id="fpSyncProgressBar" style="width:0%;height:100%;background:var(--accent-blue);transition:width .3s;border-radius:var(--radius-sm)"></div>
+                                </div>
+                                <span id="fpSyncProgressPct" style="font-size:.8rem;color:var(--text-secondary);min-width:40px">0%</span>
+                            </div>
+                            <div id="fpSyncProgressMsg" style="font-size:.8rem;color:var(--text-secondary)"></div>
+                        </div>
+                        <div id="fpSyncStatus" class="hidden" style="padding:.75rem;background:var(--accent-green-bg);border:1px solid rgba(34,197,94,.2);border-radius:var(--radius-sm);font-size:.85rem;color:var(--accent-green)">
+                            <i class="bi bi-check-circle mr-1"></i><span id="fpSyncStatusText"></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Main Table -->
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprinting-Datenbank</h3>
+                        <span class="badge badge-info" id="fpCount">0 Einträge</span></div>
+                    <div class="card-body">
+                        <div class="filters-bar">
+                            <div class="form-group"><label>Port</label><input type="number" id="fpFilterPort" class="form-control" placeholder="z.B. 22" oninput="debounce(loadFingerprints,500)()"></div>
+                            <div class="form-group"><label>Service</label><input type="text" id="fpFilterService" class="form-control" placeholder="z.B. OpenSSH" oninput="debounce(loadFingerprints,500)()"></div>
+                            <div class="form-group"><label>OS</label><input type="text" id="fpFilterOS" class="form-control" placeholder="z.B. Linux" oninput="debounce(loadFingerprints,500)()"></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="fpFilterSearch" class="form-control" placeholder="CPE, Beschreibung..." oninput="debounce(loadFingerprints,500)()"></div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Port</th><th>Service</th><th>Version</th><th>OS</th><th>CPE</th><th>Banner</th><th>Quelle</th><th>Confidence</th></tr></thead>
+                        <tbody id="fpTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="fpLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Fingerprints...</span></div>
+                        <div class="empty-state hidden" id="fpEmpty"><i class="bi bi-fingerprint"></i><h4>Keine Fingerprints gefunden</h4></div>
+                        <div id="fpPagination" class="hidden"><div class="pagination" id="fpPaginationBtns"></div><div class="pagination-info" id="fpPaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Exploit Database ========== -->
+            <section class="view-section" id="view-exploits">
+                <!-- Stats -->
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-database-exclamation"></i></div><div class="stat-info"><h4>Exploits Gesamt</h4><div class="stat-value" id="exploitStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-exclamation-octagon"></i></div><div class="stat-info"><h4>Kritisch</h4><div class="stat-value" id="exploitStatCritical">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-info"><h4>Hoch</h4><div class="stat-value" id="exploitStatHigh">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-info-circle"></i></div><div class="stat-info"><h4>Mittel/Niedrig</h4><div class="stat-value" id="exploitStatOther">0</div></div></div>
+                </div>
+                <!-- DB Update Panel -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3><i class="bi bi-arrow-repeat mr-1"></i> Datenbank-Verwaltung</h3>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-primary btn-sm" onclick="syncExploitDB()" id="exploitSyncBtn"><i class="bi bi-cloud-download"></i> ExploitDB herunterladen</button>
+                            <button class="btn btn-outline btn-sm" onclick="showExploitModal()"><i class="bi bi-plus"></i> Manuell hinzufügen</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
+                            <i class="bi bi-info-circle mr-1"></i> Quelle: <a href="https://gitlab.com/exploit-database/exploitdb" target="_blank" style="color:var(--accent-blue)">exploit-database/exploitdb</a> (GitLab) — Offizielles Exploit-DB Repository mit Exploit-Code und Metadaten.
+                        </p>
+                        <div id="exploitSyncProgress" class="hidden" style="margin-bottom:.75rem">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                                <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
+                                    <div id="exploitSyncProgressBar" style="width:0%;height:100%;background:var(--accent-red);transition:width .3s;border-radius:var(--radius-sm)"></div>
+                                </div>
+                                <span id="exploitSyncProgressPct" style="font-size:.8rem;color:var(--text-secondary);min-width:40px">0%</span>
+                            </div>
+                            <div id="exploitSyncProgressMsg" style="font-size:.8rem;color:var(--text-secondary)"></div>
+                        </div>
+                        <div id="exploitSyncStatus" class="hidden" style="padding:.75rem;background:var(--accent-green-bg);border:1px solid rgba(34,197,94,.2);border-radius:var(--radius-sm);font-size:.85rem;color:var(--accent-green)">
+                            <i class="bi bi-check-circle mr-1"></i><span id="exploitSyncStatusText"></span>
+                        </div>
+                        <div class="d-flex gap-1 mt-2" id="exploitSourceBadges"></div>
+                    </div>
+                </div>
+                <!-- Main Table -->
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit-Datenbank</h3>
+                        <button class="btn btn-outline btn-sm" onclick="showExploitCodeModal()" id="exploitCodeBtn" style="display:none"><i class="bi bi-code-slash"></i> Code anzeigen</button>
+                    </div>
+                    <div class="card-body">
+                        <div class="filters-bar">
+                            <div class="form-group"><label>Severity</label>
+                                <select id="exploitFilterSeverity" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="critical">Kritisch</option><option value="high">Hoch</option><option value="medium">Mittel</option><option value="low">Niedrig</option></select></div>
+                            <div class="form-group"><label>Plattform</label>
+                                <select id="exploitFilterPlatform" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="Linux">Linux</option><option value="Windows">Windows</option><option value="Multi">Multi</option></select></div>
+                            <div class="form-group"><label>Typ</label>
+                                <select id="exploitFilterType" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="remote">Remote</option><option value="local">Local</option></select></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="exploitFilterSearch" class="form-control" placeholder="CVE, Titel, Service..." oninput="debounce(loadExploits,500)()"></div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>CVE / EDB</th><th>Titel</th><th>Service</th><th>Port</th><th>Plattform</th><th>Typ</th><th>Severity</th><th>CVSS</th><th>Zuverlässigkeit</th><th>Quelle</th></tr></thead>
+                        <tbody id="exploitTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="exploitLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Exploits...</span></div>
+                        <div class="empty-state hidden" id="exploitEmpty"><i class="bi bi-database-exclamation"></i><h4>Keine Exploits gefunden</h4></div>
+                        <div id="exploitPagination" class="hidden"><div class="pagination" id="exploitPaginationBtns"></div><div class="pagination-info" id="exploitPaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Attack Chains ========== -->
+            <section class="view-section" id="view-attack-chains">
+                <!-- Stats -->
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-diagram-3"></i></div><div class="stat-info"><h4>Ketten Gesamt</h4><div class="stat-value" id="chainStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon green"><i class="bi bi-check-circle"></i></div><div class="stat-info"><h4>Aktiv</h4><div class="stat-value" id="chainStatActive">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-play-circle"></i></div><div class="stat-info"><h4>Ausführungen</h4><div class="stat-value" id="chainStatExecs">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-info"><h4>Befunde</h4><div class="stat-value" id="chainStatFindings">0</div></div></div>
+                </div>
+                <!-- Chain List -->
+                <div class="card mb-3">
+                    <div class="card-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Automatisierte Angriffsketten</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showChainModal()"><i class="bi bi-plus"></i> Neue Kette</button></div>
+                    <div class="card-body">
+                        <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:.9rem"><i class="bi bi-info-circle mr-1"></i> Angriffsketten werden automatisch basierend auf erkannten Diensten und offenen Ports ausgeführt. Wählen Sie eine Strategie und Angriffstiefe.</p>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Strategie</th><th>Tiefe</th><th>Ziel-Services</th><th>Risiko</th><th>Status</th><th>Aktionen</th></tr></thead>
+                        <tbody id="chainsTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="chainsLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Angriffsketten...</span></div>
+                        <div class="empty-state hidden" id="chainsEmpty"><i class="bi bi-diagram-3"></i><h4>Keine Angriffsketten konfiguriert</h4></div>
+                    </div>
+                </div>
+                <!-- Chain Execution Panel -->
+                <div class="card mb-3 hidden" id="chainExecPanel">
+                    <div class="card-header"><h3><i class="bi bi-play-circle mr-1"></i> Kette ausführen</h3></div>
+                    <div class="card-body">
+                        <div class="scan-config">
+                            <div class="form-group"><label>Scan-ID</label><input type="number" id="chainExecScanId" class="form-control" placeholder="Abgeschlossener Scan" min="1"></div>
+                            <div class="form-group"><label>Ziel-IP</label><input type="text" id="chainExecTargetIp" class="form-control" placeholder="z.B. 192.168.1.1"></div>
+                            <div class="form-group"><label>Ziel-Port</label><input type="number" id="chainExecTargetPort" class="form-control" placeholder="z.B. 445"></div>
+                            <div class="form-group"><label>Angriffskette</label><select id="chainExecChainId" class="form-control"></select></div>
+                            <div class="full-width"><button class="btn btn-danger" onclick="executeChain()"><i class="bi bi-play-fill"></i> Kette starten</button></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Execution Results -->
+                <div class="card hidden" id="chainResultsPanel">
+                    <div class="card-header"><h3><i class="bi bi-journal-check mr-1"></i> Ausführungsergebnisse</h3></div>
+                    <div class="card-body" id="chainResultsBody"></div>
+                </div>
+                <!-- Execution History -->
+                <div class="card mt-3 hidden" id="chainHistoryPanel">
+                    <div class="card-header"><h3><i class="bi bi-clock-history mr-1"></i> Ausführungshistorie</h3></div>
+                    <div class="card-body"><div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Kette</th><th>Ziel</th><th>Status</th><th>Schritte</th><th>Befunde</th><th>Datum</th></tr></thead>
+                    <tbody id="chainHistoryBody"></tbody></table></div></div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Security Audit ========== -->
+            <section class="view-section" id="view-audits">
+                <!-- Generate Audit -->
+                <div class="card mb-3">
+                    <div class="card-header"><h3><i class="bi bi-clipboard-check mr-1"></i> Security-Audit generieren</h3></div>
+                    <div class="card-body">
+                        <div class="scan-config">
+                            <div class="form-group"><label>Scan auswählen</label><select id="auditScanId" class="form-control"><option value="">Scan wählen...</option></select></div>
+                            <div class="form-group"><label>Audit-Typ</label><select id="auditType" class="form-control"><option value="full">Vollständig</option><option value="quick">Schnell</option><option value="compliance">Compliance</option></select></div>
+                            <div class="full-width"><button class="btn btn-primary" id="generateAuditBtn" onclick="generateAudit()"><i class="bi bi-clipboard-check"></i> Audit generieren</button></div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Audit History -->
+                <div class="card mb-3">
+                    <div class="card-header"><h3><i class="bi bi-clock-history mr-1"></i> Audit-Historie</h3></div>
+                    <div class="card-body">
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Scan</th><th>Ziel</th><th>Score</th><th>Rating</th><th>Befunde</th><th>Kritisch</th><th>Datum</th><th>Aktionen</th></tr></thead>
+                        <tbody id="auditHistoryBody"></tbody></table></div>
+                        <div class="empty-state hidden" id="auditHistoryEmpty"><i class="bi bi-clipboard-check"></i><h4>Keine Audits vorhanden</h4><p>Generieren Sie ein Audit für einen abgeschlossenen Scan.</p></div>
+                        <div class="loading-overlay hidden" id="auditHistoryLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Audits...</span></div>
+                    </div>
+                </div>
+                <!-- Audit Result -->
+                <div id="auditResultPanel" class="hidden">
+                    <div class="stats-grid mb-3">
+                        <div class="stat-card"><div class="stat-icon" id="auditScoreIcon"><i class="bi bi-speedometer2"></i></div><div class="stat-info"><h4>Gesamtbewertung</h4><div class="stat-value" id="auditScore">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon red"><i class="bi bi-exclamation-octagon"></i></div><div class="stat-info"><h4>Kritisch</h4><div class="stat-value" id="auditCritical">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-info"><h4>Hoch</h4><div class="stat-value" id="auditHigh">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-info-circle"></i></div><div class="stat-info"><h4>Mittel</h4><div class="stat-value" id="auditMedium">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon green"><i class="bi bi-check-circle"></i></div><div class="stat-info"><h4>Niedrig</h4><div class="stat-value" id="auditLow">0</div></div></div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><h3><i class="bi bi-speedometer2 mr-1"></i> Risikobewertung</h3></div>
+                        <div class="card-body">
+                            <div class="audit-score-display" id="auditScoreDisplay">
+                                <div class="audit-score-bar"><div class="audit-score-fill" id="auditScoreFill"></div></div>
+                                <div class="audit-rating-label" id="auditRatingLabel"></div>
+                            </div>
+                            <div class="audit-summary" id="auditSummaryText" style="white-space:pre-line;margin-top:1rem;color:var(--text-secondary);font-size:.9rem"></div>
+                        </div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><h3><i class="bi bi-shield-check mr-1"></i> Compliance-Prüfung</h3></div>
+                        <div class="card-body"><div id="auditComplianceBody"></div></div>
+                    </div>
+                    <div class="card mb-3">
+                        <div class="card-header"><h3><i class="bi bi-list-check mr-1"></i> Befunde</h3></div>
+                        <div class="card-body">
+                            <div class="table-container"><table class="data-table"><thead><tr><th>Prio</th><th>Kategorie</th><th>Befund</th><th>Severity</th><th>CVSS</th><th>Asset</th><th>Maßnahme</th></tr></thead>
+                            <tbody id="auditFindingsBody"></tbody></table></div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-header"><h3><i class="bi bi-lightbulb mr-1"></i> Empfehlungen</h3></div>
+                        <div class="card-body"><div id="auditRecommendationsBody"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Credentials ========== -->
+            <section class="view-section" id="view-credentials">
+                <!-- Stats -->
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-shield-lock"></i></div><div class="stat-info"><h4>Gesamt</h4><div class="stat-value" id="credStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon green"><i class="bi bi-check-circle"></i></div><div class="stat-info"><h4>Gültig</h4><div class="stat-value" id="credStatValid">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-x-circle"></i></div><div class="stat-info"><h4>Ungültig</h4><div class="stat-value" id="credStatInvalid">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-clock-history"></i></div><div class="stat-info"><h4>Nutzungen (30d)</h4><div class="stat-value" id="credStatUsage">0</div></div></div>
+                </div>
+                <!-- Main Card -->
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-shield-lock mr-1"></i> Credential-Verwaltung</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showCredentialModal()"><i class="bi bi-plus"></i> Neue Zugangsdaten</button></div>
+                    <div class="card-body">
+                        <p style="color:var(--text-secondary);margin-bottom:1rem;font-size:.85rem"><i class="bi bi-lock mr-1"></i> Alle Zugangsdaten werden AES-256-GCM verschlüsselt gespeichert. Passwörter und SSH-Keys werden niemals im Klartext angezeigt.</p>
+                        <div class="filters-bar">
+                            <div class="form-group"><label>Methode</label>
+                                <select id="credFilterMethod" class="form-control" onchange="loadCredentials()"><option value="">Alle</option><option value="password">Passwort</option><option value="ssh_key">SSH-Key</option><option value="ssh_password">SSH+Passwort</option><option value="active_directory">Active Directory</option><option value="snmp">SNMP</option><option value="api_key">API-Key</option><option value="database">Datenbank</option><option value="certificate">Zertifikat</option></select></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="credFilterSearch" class="form-control" placeholder="Name, Benutzer..." oninput="debounce(loadCredentials,500)()"></div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Methode</th><th>Benutzer</th><th>Domain</th><th>Zielbereich</th><th>Status</th><th>Zuletzt genutzt</th><th>Aktionen</th></tr></thead>
+                        <tbody id="credTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="credLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Zugangsdaten...</span></div>
+                        <div class="empty-state hidden" id="credEmpty"><i class="bi bi-shield-lock"></i><h4>Keine Zugangsdaten hinterlegt</h4><p>Erstellen Sie Zugangsdaten für authentifizierte Tests.</p></div>
                     </div>
                 </div>
             </section>
@@ -348,26 +670,110 @@
                 <div class="card mb-3">
                     <div class="card-header"><h3><i class="bi bi-table mr-1"></i> Ergebnisse</h3></div>
                     <div class="card-body">
-                        <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service</th><th>Status</th><th>Risiko</th></tr></thead>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service / Version</th><th>Status</th><th>Risiko</th></tr></thead>
                         <tbody id="detailResultsBody"></tbody></table></div>
                         <div class="empty-state hidden" id="detailResultsEmpty"><i class="bi bi-shield-check"></i><h4>Keine Ergebnisse</h4></div>
                         <div id="detailPagination" class="hidden"><div class="pagination" id="detailPaginationBtns"></div><div class="pagination-info" id="detailPaginationInfo"></div></div>
                     </div>
                 </div>
                 <div class="card" id="detailVulnCard">
-                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Schwachstellen</h3></div>
+                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> CVE-Matches (Service-Detection)</h3></div>
                     <div class="card-body">
-                        <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Schwachstelle</th><th>Severity</th><th>CVSS</th><th>Maßnahme</th></tr></thead>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Beschreibung</th><th>Erkannter Service</th><th>Severity</th><th>CVSS</th><th>Konfidenz</th></tr></thead>
                         <tbody id="detailVulnBody"></tbody></table></div>
-                        <div class="empty-state hidden" id="detailVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine Schwachstellen</h4></div>
+                        <div class="empty-state hidden" id="detailVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine CVE-Matches</h4><p>Stellen Sie sicher, dass die CVE-Datenbank synchronisiert ist.</p></div>
                     </div>
                 </div>
             </section>
+
         </main>
     </div>
 
+    <!-- ========== Fingerprint Modal ========== -->
+    <div class="modal-overlay" id="fingerprintModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideFingerprintModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="fpForm">
+                <div class="form-group"><label>Port *</label><input type="number" id="fpFormPort" class="form-control" placeholder="z.B. 22" required min="1" max="65535"></div>
+                <div class="form-group"><label>Service-Name *</label><input type="text" id="fpFormService" class="form-control" placeholder="z.B. OpenSSH" required></div>
+                <div class="form-group"><label>Version</label><input type="text" id="fpFormVersion" class="form-control" placeholder="z.B. 9.x"></div>
+                <div class="form-group"><label>Banner-Pattern</label><input type="text" id="fpFormBanner" class="form-control" placeholder="z.B. SSH-2.0-OpenSSH"></div>
+                <div class="form-group"><label>Betriebssystem</label><input type="text" id="fpFormOS" class="form-control" placeholder="z.B. Linux"></div>
+                <div class="form-group"><label>CPE</label><input type="text" id="fpFormCPE" class="form-control" placeholder="z.B. cpe:/a:openbsd:openssh"></div>
+                <div class="form-group"><label>Beschreibung</label><input type="text" id="fpFormDesc" class="form-control" placeholder="Beschreibung"></div>
+                <div class="form-group"><label>Confidence (%)</label><input type="number" id="fpFormConf" class="form-control" value="80" min="1" max="100"></div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideFingerprintModal()">Abbrechen</button><button class="btn btn-success" onclick="saveFingerprint()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== Exploit Modal ========== -->
+    <div class="modal-overlay" id="exploitModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideExploitModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="exploitForm">
+                <div class="form-group"><label>Titel *</label><input type="text" id="exploitFormTitle" class="form-control" placeholder="Exploit-Titel" required></div>
+                <div class="form-group"><label>CVE-ID</label><input type="text" id="exploitFormCVE" class="form-control" placeholder="z.B. CVE-2024-1234"></div>
+                <div class="form-group"><label>Exploit-DB ID</label><input type="text" id="exploitFormEDB" class="form-control" placeholder="z.B. EDB-12345"></div>
+                <div class="form-group"><label>Service</label><input type="text" id="exploitFormService" class="form-control" placeholder="z.B. OpenSSH"></div>
+                <div class="form-group"><label>Port</label><input type="number" id="exploitFormPort" class="form-control" placeholder="z.B. 22"></div>
+                <div class="form-group"><label>Plattform</label><select id="exploitFormPlatform" class="form-control"><option value="Multi">Multi</option><option value="Linux">Linux</option><option value="Windows">Windows</option><option value="macOS">macOS</option></select></div>
+                <div class="form-group"><label>Typ</label><select id="exploitFormType" class="form-control"><option value="remote">Remote</option><option value="local">Local</option><option value="webapps">WebApps</option><option value="dos">DoS</option></select></div>
+                <div class="form-group"><label>Severity</label><select id="exploitFormSeverity" class="form-control"><option value="critical">Kritisch</option><option value="high">Hoch</option><option value="medium">Mittel</option><option value="low">Niedrig</option></select></div>
+                <div class="form-group"><label>CVSS Score</label><input type="number" id="exploitFormCVSS" class="form-control" placeholder="z.B. 9.8" step="0.1" min="0" max="10"></div>
+                <div class="form-group"><label>Zuverlässigkeit</label><select id="exploitFormReliability" class="form-control"><option value="unknown">Unbekannt</option><option value="tested">Getestet</option><option value="good">Gut</option><option value="excellent">Exzellent</option></select></div>
+                <div class="form-group"><label>Quell-URL</label><input type="text" id="exploitFormURL" class="form-control" placeholder="https://..."></div>
+                <div class="form-group full-width"><label>Beschreibung</label><textarea id="exploitFormDesc" class="form-control" rows="3" placeholder="Beschreibung des Exploits"></textarea></div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideExploitModal()">Abbrechen</button><button class="btn btn-success" onclick="saveExploit()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== Attack Chain Modal ========== -->
+    <div class="modal-overlay" id="chainModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Neue Angriffskette</h3><button class="btn-icon btn-outline" onclick="hideChainModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="chainForm">
+                <div class="form-group"><label>Name *</label><input type="text" id="chainFormName" class="form-control" placeholder="z.B. Custom SSH Audit" required></div>
+                <div class="form-group"><label>Beschreibung</label><textarea id="chainFormDesc" class="form-control" rows="2" placeholder="Beschreibung der Kette"></textarea></div>
+                <div class="form-group"><label>Strategie</label><select id="chainFormStrategy" class="form-control"><option value="passive">Passiv – Nur Reconnaissance</option><option value="standard" selected>Standard – Recon + Audit</option><option value="aggressive">Aggressiv – Inkl. Exploit-Matching</option><option value="thorough">Gründlich – Alle Methoden</option></select></div>
+                <div class="form-group"><label>Tiefe (1-4)</label><input type="number" id="chainFormDepth" class="form-control" value="2" min="1" max="4"></div>
+                <div class="form-group"><label>Risiko-Level</label><select id="chainFormRisk" class="form-control"><option value="low">Niedrig</option><option value="medium" selected>Mittel</option><option value="high">Hoch</option><option value="critical">Kritisch</option></select></div>
+                <div class="form-group full-width"><label>Ziel-Services (kommagetrennt)</label><input type="text" id="chainFormServices" class="form-control" placeholder="z.B. SSH, HTTP, MySQL"></div>
+                <div class="form-group full-width"><label>Voraussetzung: Ports (kommagetrennt)</label><input type="text" id="chainFormPorts" class="form-control" placeholder="z.B. 22, 80, 443"></div>
+                <div class="form-group full-width">
+                    <label>Schritte</label>
+                    <div id="chainStepsContainer"></div>
+                    <button type="button" class="btn btn-outline btn-sm mt-1" onclick="addChainStep()"><i class="bi bi-plus"></i> Schritt hinzufügen</button>
+                </div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideChainModal()">Abbrechen</button><button class="btn btn-success" onclick="saveChain()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== Credential Modal ========== -->
+    <div class="modal-overlay" id="credentialModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-shield-lock mr-1"></i> <span id="credModalTitle">Neue Zugangsdaten</span></h3><button class="btn-icon btn-outline" onclick="hideCredentialModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="credForm">
+                <input type="hidden" id="credEditId">
+                <div class="form-group"><label>Name *</label><input type="text" id="credName" class="form-control" placeholder="z.B. Prod-Server SSH" required></div>
+                <div class="form-group"><label>Authentifizierungsmethode *</label>
+                    <select id="credAuthMethod" class="form-control" onchange="toggleCredFields()">
+                        <option value="password">Passwort</option><option value="ssh_key">SSH-Key</option><option value="ssh_password">SSH + Passwort</option>
+                        <option value="active_directory">Active Directory</option><option value="snmp">SNMP Community</option>
+                        <option value="api_key">API-Key</option><option value="database">Datenbank</option><option value="certificate">Zertifikat</option>
+                    </select></div>
+                <div class="form-group"><label>Benutzername</label><input type="text" id="credUsername" class="form-control" placeholder="Benutzername"></div>
+                <div class="form-group" id="credPasswordGroup"><label>Passwort / Secret</label><input type="password" id="credPassword" class="form-control" placeholder="Passwort eingeben"></div>
+                <div class="form-group hidden" id="credSshKeyGroup"><label>SSH Private Key</label><textarea id="credSshKey" class="form-control" rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----"></textarea></div>
+                <div class="form-group" id="credDomainGroup"><label>Domain</label><input type="text" id="credDomain" class="form-control" placeholder="z.B. CORP.LOCAL"></div>
+                <div class="form-group"><label>Zielbereich</label><input type="text" id="credTargetScope" class="form-control" placeholder="z.B. 192.168.1.0/24 oder * für alle">
+                    <small class="text-muted" style="display:block;font-size:.75rem;margin-top:.25rem">IP-Bereich oder * für alle Ziele</small></div>
+                <div class="form-group"><label>Beschreibung</label><input type="text" id="credDescription" class="form-control" placeholder="Optionale Beschreibung"></div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideCredentialModal()">Abbrechen</button><button class="btn btn-success" onclick="saveCredential()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
     <!-- ========== Password Modal ========== -->
-    <div class="modal-overlay hidden" id="passwordModal">
+    <div class="modal-overlay" id="passwordModal">
         <div class="modal"><div class="modal-header"><h3><i class="bi bi-key mr-1"></i> Passwort ändern</h3><button class="btn-icon btn-outline" onclick="hidePasswordModal()"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="dashboardPwForm" onsubmit="changePassword(event)">
                 <div class="form-group"><label>Aktuelles Passwort</label><input type="password" id="modalCurrentPw" class="form-control" required></div>
@@ -379,7 +785,7 @@
     </div>
 
     <!-- ========== Schedule Modal ========== -->
-    <div class="modal-overlay hidden" id="scheduleModal">
+    <div class="modal-overlay" id="scheduleModal">
         <div class="modal"><div class="modal-header"><h3><i class="bi bi-calendar-plus mr-1"></i> <span id="scheduleModalTitle">Neuer geplanter Scan</span></h3><button class="btn-icon btn-outline" onclick="hideScheduleModal()"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="scheduleForm">
                 <input type="hidden" id="scheduleEditId">
@@ -398,7 +804,7 @@
     </div>
 
     <!-- ========== User Modal ========== -->
-    <div class="modal-overlay hidden" id="userModal">
+    <div class="modal-overlay" id="userModal">
         <div class="modal"><div class="modal-header"><h3><i class="bi bi-person-plus mr-1"></i> <span id="userModalTitle">Neuer Benutzer</span></h3><button class="btn-icon btn-outline" onclick="hideUserModal()"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="userForm">
                 <input type="hidden" id="userEditId">
@@ -408,6 +814,61 @@
                     <div id="userRoleCheckboxes"></div></div>
             </form></div>
             <div class="modal-footer"><button class="btn btn-outline" onclick="hideUserModal()">Abbrechen</button><button class="btn btn-success" onclick="saveUser()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== Fingerprint Detail Modal ========== -->
+    <div class="modal-overlay" id="fpDetailModal">
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint-Details</h3><button class="btn-icon btn-outline" onclick="hideFpDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body" id="fpDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- ========== Exploit Detail Modal ========== -->
+    <div class="modal-overlay" id="exploitDetailModal">
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit-Details</h3><button class="btn-icon btn-outline" onclick="hideExDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body" id="exploitDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- ========== Audit Detail Modal ========== -->
+    <div class="modal-overlay" id="auditDetailModal">
+        <div class="modal modal-xl"><div class="modal-header"><h3><i class="bi bi-clipboard-check mr-1"></i> Audit-Details</h3><button class="btn-icon btn-outline" onclick="hideAuditDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body" id="auditDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- ========== Chain Execution Detail Modal ========== -->
+    <div class="modal-overlay" id="chainExecDetailModal">
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Ausführungs-Details</h3><button class="btn-icon btn-outline" onclick="hideChainExecDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body" id="chainExecDetailContent"></div>
+        </div>
+    </div>
+
+    <!-- ========== Exploit Code Viewer Modal ========== -->
+    <div class="modal-overlay" id="exploitCodeModal">
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-code-slash mr-1"></i> Exploit-Code</h3><button class="btn-icon btn-outline" onclick="hideExploitCodeModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body">
+                <div id="exploitCodeMeta" style="margin-bottom:1rem;padding:.75rem;background:var(--bg-tertiary);border-radius:var(--radius-sm);font-size:.85rem">
+                    <div id="exploitCodeFileName" style="font-weight:600;margin-bottom:.25rem"></div>
+                    <div id="exploitCodeLang" style="color:var(--text-secondary)"></div>
+                </div>
+                <div style="position:relative">
+                    <button class="btn btn-outline btn-sm" onclick="copyExploitCode()" style="position:absolute;top:.5rem;right:.5rem;z-index:2"><i class="bi bi-clipboard"></i> Kopieren</button>
+                    <pre id="exploitCodeContent" style="background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-sm);padding:1rem;max-height:500px;overflow:auto;font-size:.8rem;line-height:1.5;white-space:pre-wrap;word-break:break-all"></pre>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="hideExploitCodeModal()">Schließen</button>
+                <a id="exploitCodeExtLink" href="#" target="_blank" class="btn btn-primary"><i class="bi bi-box-arrow-up-right"></i> Auf Exploit-DB öffnen</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== CVE Detail Modal ========== -->
+    <div class="modal-overlay" id="cveDetailModal">
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-list-check mr-1"></i> CVE-Details</h3><button class="btn-icon btn-outline" onclick="hideCVEDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body" id="cveDetailContent"></div>
         </div>
     </div>
 
