@@ -6,9 +6,19 @@ node_modules/
 
 # Database
 database/*.db
+database/*.db-shm
+database/*.db-wal
+checkpoints/
+downloads/
+
+# Data files (external sources)
+data/
 
 # Logs
 logs/*.log
+logs/.*.json
+*.log
+server.log
 
 # OS files
 .DS_Store
@@ -17,6 +27,11 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Session/Cookies
+cookies.txt
+todo.md
+check_years.js
 
 # Coverage
 coverage/
