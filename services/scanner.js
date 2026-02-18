@@ -4,7 +4,8 @@ const logger = require('./logger');
 const ExploitService = require('./exploitService');
 const emailService = require('./emailService');
 const { EventEmitter } = require('events');
-const IPCIDR = require('ip-cidr');
+const IPCIDR_MODULE = require('ip-cidr');
+const IPCIDR = IPCIDR_MODULE.default || IPCIDR_MODULE;
 
 class ScannerService extends EventEmitter {
     constructor() {
@@ -63,12 +64,7 @@ class ScannerService extends EventEmitter {
 
     // Validate CIDR notation
     static isValidCIDR(cidr) {
-        try {
-            const ipCidr = new IPCIDR(cidr);
-            return ipCidr.isValid();
-        } catch {
-            return false;
-        }
+        return IPCIDR.isValidCIDR(cidr);
     }
 
     // Check if IP is in private range (RFC 1918)
