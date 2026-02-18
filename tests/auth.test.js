@@ -1,11 +1,11 @@
-const request = require('supertest');
-const { app } = require('../server');
-const { initializeDatabase, closeDatabase, getDatabase } = require('../config/database');
-
 // Set test environment
 process.env.NODE_ENV = 'test';
 process.env.DATABASE_PATH = ':memory:';
 process.env.SESSION_SECRET = 'test-secret-key';
+
+const request = require('supertest');
+const { app } = require('../server');
+const { initializeDatabase, closeDatabase, getDatabase } = require('../config/database');
 
 let server;
 let agent;
@@ -199,6 +199,16 @@ describe('Scan API', () => {
             .post('/api/auth/login')
             .send({ username: 'admin', password: 'admin' });
         csrfToken = loginRes.body.csrfToken;
+
+        // Change password to satisfy forcePasswordChange requirement
+        await authenticatedAgent
+            .post('/api/auth/change-password')
+            .set('X-CSRF-Token', csrfToken)
+            .send({
+                currentPassword: 'admin',
+                newPassword: 'NewPassword123!',
+                confirmPassword: 'NewPassword123!'
+            });
     });
 
     describe('POST /api/scan/start', () => {
@@ -311,7 +321,8 @@ describe('Scan API', () => {
 // ============================================
 describe('Input Validation', () => {
 
-    const ScannerService = require('../services/scanner');
+    const scannerService = require('../services/scanner');
+    const ScannerService = scannerService.constructor;
 
     test('should validate correct IPv4 addresses', () => {
         expect(ScannerService.isValidIP('192.168.1.1')).toBe(true);
