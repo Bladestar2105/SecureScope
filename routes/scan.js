@@ -385,15 +385,24 @@ router.get('/events', (req, res) => {
     res.write('data: {"type":"connected"}\n\n');
 
     const onProgress = (data) => {
-        res.write(`data: ${JSON.stringify({ type: 'progress', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'progress', ...data })}\n\n`);
+        }
     };
 
     const onComplete = (data) => {
-        res.write(`data: ${JSON.stringify({ type: 'complete', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'complete', ...data })}\n\n`);
+        }
     };
 
     const onError = (data) => {
-        res.write(`data: ${JSON.stringify({ type: 'error', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'error', ...data })}\n\n`);
+        }
     };
 
     scannerService.on('scanProgress', onProgress);
