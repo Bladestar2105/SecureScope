@@ -12,6 +12,8 @@ function getDatabase() {
         db = new Database(DB_PATH);
         db.pragma('journal_mode = WAL');
         db.pragma('foreign_keys = ON');
+        db.pragma('busy_timeout = 30000'); // Wait up to 30s if DB is locked by worker
+        db.pragma('wal_autocheckpoint = 1000');
     }
     return db;
 }
@@ -59,6 +61,13 @@ function initializeDatabase() {
             service TEXT,
             state TEXT,
             risk_level TEXT DEFAULT 'info',
+            service_product TEXT,
+            service_version TEXT,
+            service_extra TEXT,
+            service_cpe TEXT,
+            banner TEXT,
+            os_name TEXT,
+            os_accuracy INTEGER DEFAULT 0,
             FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE
         )
     `);
@@ -119,18 +128,7 @@ function initializeDatabase() {
         )
     `);
 
-    // Create scan_vulnerabilities linking scan results to vulnerabilities
-    database.exec(`
-        CREATE TABLE IF NOT EXISTS scan_vulnerabilities (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            scan_id INTEGER NOT NULL,
-            scan_result_id INTEGER NOT NULL,
-            vulnerability_id INTEGER NOT NULL,
-            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
-            FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
-            FOREIGN KEY (vulnerability_id) REFERENCES vulnerabilities(id)
-        )
-    `);
+    // scan_vulnerabilities table is now created later with CVE-based schema
 
     // Create scheduled_scans table
     database.exec(`
@@ -174,6 +172,279 @@ function initializeDatabase() {
         )
     `);
 
+    // ===== Fingerprinting Database =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS fingerprints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            port INTEGER NOT NULL,
+            protocol TEXT DEFAULT 'tcp',
+            service_name TEXT NOT NULL,
+            version_pattern TEXT,
+            banner_pattern TEXT,
+            os_family TEXT,
+            os_version TEXT,
+            cpe TEXT,
+            description TEXT,
+            confidence INTEGER DEFAULT 80,
+            source TEXT DEFAULT 'local',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // Enhanced scan results with fingerprinting
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS scan_fingerprints (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER NOT NULL,
+            scan_result_id INTEGER NOT NULL,
+            detected_service TEXT,
+            detected_version TEXT,
+            detected_os TEXT,
+            detected_os_version TEXT,
+            cpe TEXT,
+            banner TEXT,
+            confidence INTEGER DEFAULT 0,
+            fingerprint_id INTEGER,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (fingerprint_id) REFERENCES fingerprints(id)
+        )
+    `);
+
+    // ===== Scan Vulnerabilities (CVE matches from Nmap service detection) =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS scan_vulnerabilities (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER NOT NULL,
+            scan_result_id INTEGER NOT NULL,
+            cve_id TEXT NOT NULL,
+            title TEXT,
+            severity TEXT,
+            cvss_score REAL,
+            matched_service TEXT,
+            matched_version TEXT,
+            match_confidence INTEGER DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            UNIQUE(scan_id, scan_result_id, cve_id)
+        )
+    `);
+
+    // ===== Exploit Database =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS exploits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            exploit_db_id TEXT,
+            cve_id TEXT,
+            title TEXT NOT NULL,
+            description TEXT,
+            platform TEXT,
+            exploit_type TEXT DEFAULT 'remote',
+            service_name TEXT,
+            service_version_min TEXT,
+            service_version_max TEXT,
+            port INTEGER,
+            severity TEXT DEFAULT 'high',
+            cvss_score REAL,
+            reliability TEXT DEFAULT 'unknown',
+            source TEXT DEFAULT 'local',
+            source_url TEXT,
+            exploit_code TEXT,
+            verified BOOLEAN DEFAULT 0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // Exploit-to-scan mapping
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS scan_exploits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER NOT NULL,
+            scan_result_id INTEGER NOT NULL,
+            exploit_id INTEGER NOT NULL,
+            match_confidence INTEGER DEFAULT 50,
+            match_reason TEXT,
+            tested BOOLEAN DEFAULT 0,
+            test_result TEXT,
+            tested_at DATETIME,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
+            FOREIGN KEY (exploit_id) REFERENCES exploits(id)
+        )
+    `);
+
+    // ===== Attack Chains =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS attack_chains (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            description TEXT,
+            strategy TEXT DEFAULT 'standard',
+            depth_level INTEGER DEFAULT 2,
+            auto_escalate BOOLEAN DEFAULT 0,
+            target_services TEXT,
+            steps_json TEXT NOT NULL DEFAULT '[]',
+            preconditions_json TEXT DEFAULT '[]',
+            risk_level TEXT DEFAULT 'medium',
+            enabled BOOLEAN DEFAULT 1,
+            created_by INTEGER,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id)
+        )
+    `);
+
+    // Attack Chain Executions
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS attack_chain_executions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER NOT NULL,
+            chain_id INTEGER NOT NULL,
+            target_ip TEXT NOT NULL,
+            target_port INTEGER,
+            status TEXT DEFAULT 'pending',
+            current_step INTEGER DEFAULT 0,
+            total_steps INTEGER DEFAULT 0,
+            results_json TEXT DEFAULT '[]',
+            findings_json TEXT DEFAULT '[]',
+            started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            executed_by INTEGER,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (chain_id) REFERENCES attack_chains(id),
+            FOREIGN KEY (executed_by) REFERENCES users(id)
+        )
+    `);
+
+    // ===== Security Audit Reports =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS security_audits (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            scan_id INTEGER NOT NULL,
+            audit_type TEXT DEFAULT 'full',
+            overall_score REAL DEFAULT 0,
+            risk_rating TEXT DEFAULT 'unknown',
+            executive_summary TEXT,
+            findings_count INTEGER DEFAULT 0,
+            critical_count INTEGER DEFAULT 0,
+            high_count INTEGER DEFAULT 0,
+            medium_count INTEGER DEFAULT 0,
+            low_count INTEGER DEFAULT 0,
+            info_count INTEGER DEFAULT 0,
+            recommendations_json TEXT DEFAULT '[]',
+            compliance_json TEXT DEFAULT '{}',
+            generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            generated_by INTEGER,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
+            FOREIGN KEY (generated_by) REFERENCES users(id)
+        )
+    `);
+
+    // Audit Findings
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS audit_findings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            audit_id INTEGER NOT NULL,
+            category TEXT NOT NULL,
+            title TEXT NOT NULL,
+            description TEXT,
+            severity TEXT DEFAULT 'medium',
+            cvss_score REAL,
+            affected_asset TEXT,
+            affected_port INTEGER,
+            affected_service TEXT,
+            evidence TEXT,
+            remediation TEXT,
+            priority INTEGER DEFAULT 3,
+            status TEXT DEFAULT 'open',
+            FOREIGN KEY (audit_id) REFERENCES security_audits(id) ON DELETE CASCADE
+        )
+    `);
+
+    // ===== Credential Vault =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS credentials (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            credential_type TEXT NOT NULL DEFAULT 'password',
+            username TEXT,
+            password_encrypted TEXT,
+            ssh_key_encrypted TEXT,
+            domain TEXT,
+            auth_method TEXT DEFAULT 'password',
+            target_scope TEXT,
+            description TEXT,
+            tags TEXT DEFAULT '[]',
+            last_used_at DATETIME,
+            is_valid BOOLEAN DEFAULT 1,
+            created_by INTEGER NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+        )
+    `);
+
+    // Credential usage log
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS credential_usage_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            credential_id INTEGER NOT NULL,
+            scan_id INTEGER,
+            target_ip TEXT,
+            target_port INTEGER,
+            target_service TEXT,
+            auth_success BOOLEAN DEFAULT 0,
+            details TEXT,
+            used_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            used_by INTEGER,
+            FOREIGN KEY (credential_id) REFERENCES credentials(id) ON DELETE CASCADE,
+            FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE SET NULL,
+            FOREIGN KEY (used_by) REFERENCES users(id)
+        )
+    `);
+
+    // ===== CVE Entries (from cvelistV5) =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS cve_entries (
+            cve_id TEXT PRIMARY KEY,
+            state TEXT DEFAULT 'PUBLISHED',
+            date_published TEXT,
+            date_updated TEXT,
+            title TEXT,
+            description TEXT,
+            severity TEXT,
+            cvss_score REAL,
+            cvss_vector TEXT,
+            affected_products TEXT,
+            references_json TEXT,
+            source_data_json TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    // ===== Database Update Tracking =====
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS db_update_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            database_type TEXT NOT NULL,
+            source TEXT NOT NULL,
+            entries_before INTEGER DEFAULT 0,
+            entries_added INTEGER DEFAULT 0,
+            entries_updated INTEGER DEFAULT 0,
+            entries_after INTEGER DEFAULT 0,
+            status TEXT DEFAULT 'completed',
+            error_message TEXT,
+            started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            completed_at DATETIME,
+            triggered_by INTEGER,
+            FOREIGN KEY (triggered_by) REFERENCES users(id)
+        )
+    `);
+
     // Create indexes for performance
     database.exec(`
         CREATE INDEX IF NOT EXISTS idx_scans_user_id ON scans(user_id);
@@ -191,7 +462,44 @@ function initializeDatabase() {
         CREATE INDEX IF NOT EXISTS idx_scheduled_scans_enabled ON scheduled_scans(enabled);
         CREATE INDEX IF NOT EXISTS idx_user_roles_user ON user_roles(user_id);
         CREATE INDEX IF NOT EXISTS idx_user_roles_role ON user_roles(role_id);
+        CREATE INDEX IF NOT EXISTS idx_fingerprints_port ON fingerprints(port);
+        CREATE INDEX IF NOT EXISTS idx_fingerprints_service ON fingerprints(service_name);
+        CREATE INDEX IF NOT EXISTS idx_scan_fingerprints_scan ON scan_fingerprints(scan_id);
+        CREATE INDEX IF NOT EXISTS idx_exploits_cve ON exploits(cve_id);
+        CREATE INDEX IF NOT EXISTS idx_exploits_service ON exploits(service_name);
+        CREATE INDEX IF NOT EXISTS idx_exploits_port ON exploits(port);
+        CREATE INDEX IF NOT EXISTS idx_scan_exploits_scan ON scan_exploits(scan_id);
+        CREATE INDEX IF NOT EXISTS idx_attack_chains_enabled ON attack_chains(enabled);
+        CREATE INDEX IF NOT EXISTS idx_attack_executions_scan ON attack_chain_executions(scan_id);
+        CREATE INDEX IF NOT EXISTS idx_security_audits_scan ON security_audits(scan_id);
+        CREATE INDEX IF NOT EXISTS idx_audit_findings_audit ON audit_findings(audit_id);
+        CREATE INDEX IF NOT EXISTS idx_credentials_user ON credentials(created_by);
+        CREATE INDEX IF NOT EXISTS idx_credential_usage_cred ON credential_usage_log(credential_id);
+        CREATE INDEX IF NOT EXISTS idx_db_update_log_type ON db_update_log(database_type);
+        CREATE INDEX IF NOT EXISTS idx_cve_entries_severity ON cve_entries(severity);
+        CREATE INDEX IF NOT EXISTS idx_cve_entries_published ON cve_entries(date_published);
+        CREATE INDEX IF NOT EXISTS idx_cve_entries_state ON cve_entries(state);
+        CREATE INDEX IF NOT EXISTS idx_scan_vulnerabilities_result ON scan_vulnerabilities(scan_result_id);
+        CREATE INDEX IF NOT EXISTS idx_scan_vulnerabilities_cve ON scan_vulnerabilities(cve_id);
+        CREATE INDEX IF NOT EXISTS idx_scan_results_service ON scan_results(service_product);
     `);
+
+    // Migrate existing scan_results table - add new columns if missing
+    try {
+        const cols = database.prepare("PRAGMA table_info(scan_results)").all().map(c => c.name);
+        if (!cols.includes('service_product')) {
+            database.exec("ALTER TABLE scan_results ADD COLUMN service_product TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN service_version TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN service_extra TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN service_cpe TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN banner TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN os_name TEXT");
+            database.exec("ALTER TABLE scan_results ADD COLUMN os_accuracy INTEGER DEFAULT 0");
+            logger.info('Migrated scan_results table with service detection columns');
+        }
+    } catch (migErr) {
+        // Columns already exist or table doesn't exist yet - both are fine
+    }
 
     // Seed default roles
     const adminRole = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
@@ -225,7 +533,7 @@ function initializeDatabase() {
         const passwordHash = bcrypt.hashSync('admin', saltRounds);
         const result = database.prepare(
             'INSERT INTO users (username, password_hash, force_password_change) VALUES (?, ?, ?)'
-        ).run('admin', passwordHash, 1);
+        ).run('admin', passwordHash, 0);
 
         // Assign admin role
         const adminRoleId = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
@@ -237,8 +545,9 @@ function initializeDatabase() {
         logger.info('Default admin user created (username: admin, password: admin)');
     }
 
-    // Seed vulnerability knowledge base
-    seedVulnerabilities(database);
+    // Seed functions removed - only real data from external sources will be used
+
+    // Seed functions removed - only real data from external sources will be used
 
     logger.info('Database initialized successfully');
     return database;
@@ -250,120 +559,6 @@ function closeDatabase() {
         db = null;
         logger.info('Database connection closed');
     }
-}
-
-function seedVulnerabilities(database) {
-    const count = database.prepare('SELECT COUNT(*) as c FROM vulnerabilities').get();
-    if (count.c > 0) return;
-
-    const vulns = [
-        { port: 21, service: 'FTP', cve: 'CVE-2011-2523', severity: 'critical', cvss: 9.8,
-          title: 'FTP Anonymous Login erlaubt',
-          description: 'FTP-Server erlaubt anonymen Zugriff ohne Authentifizierung. Angreifer können Dateien lesen oder hochladen.',
-          remediation: 'Deaktivieren Sie anonymen FTP-Zugang. Verwenden Sie SFTP statt FTP.' },
-        { port: 21, service: 'FTP', cve: 'CVE-2015-3306', severity: 'critical', cvss: 10.0,
-          title: 'ProFTPD mod_copy Schwachstelle',
-          description: 'ProFTPD mod_copy erlaubt unauthentifizierten Benutzern das Kopieren von Dateien auf dem Server.',
-          remediation: 'Aktualisieren Sie ProFTPD auf die neueste Version. Deaktivieren Sie mod_copy.' },
-        { port: 22, service: 'SSH', cve: 'CVE-2023-48795', severity: 'medium', cvss: 5.9,
-          title: 'SSH Terrapin Attack',
-          description: 'SSH-Verbindungen können durch Prefix-Truncation-Angriff manipuliert werden.',
-          remediation: 'Aktualisieren Sie OpenSSH auf Version 9.6 oder höher. Deaktivieren Sie ChaCha20-Poly1305 und CBC-ETM Cipher.' },
-        { port: 22, service: 'SSH', cve: 'CVE-2020-15778', severity: 'high', cvss: 7.8,
-          title: 'OpenSSH SCP Command Injection',
-          description: 'SCP-Befehlsinjektion über manipulierte Dateinamen möglich.',
-          remediation: 'Verwenden Sie SFTP statt SCP. Aktualisieren Sie OpenSSH.' },
-        { port: 23, service: 'Telnet', cve: 'CVE-2020-10188', severity: 'critical', cvss: 9.8,
-          title: 'Telnet unverschlüsselte Kommunikation',
-          description: 'Telnet überträgt alle Daten inkl. Passwörter im Klartext. Extrem anfällig für Man-in-the-Middle-Angriffe.',
-          remediation: 'Deaktivieren Sie Telnet vollständig. Verwenden Sie SSH als sichere Alternative.' },
-        { port: 25, service: 'SMTP', cve: 'CVE-2021-3156', severity: 'high', cvss: 7.5,
-          title: 'SMTP Open Relay',
-          description: 'SMTP-Server akzeptiert E-Mails von nicht-authentifizierten Absendern für externe Domains.',
-          remediation: 'Konfigurieren Sie SMTP-Authentifizierung. Beschränken Sie Relay auf autorisierte Benutzer.' },
-        { port: 53, service: 'DNS', cve: 'CVE-2020-1350', severity: 'critical', cvss: 10.0,
-          title: 'DNS SigRed Schwachstelle',
-          description: 'Windows DNS Server Remote Code Execution über manipulierte DNS-Antworten.',
-          remediation: 'Installieren Sie Microsoft-Sicherheitsupdates. Beschränken Sie DNS-Rekursion.' },
-        { port: 80, service: 'HTTP', cve: 'CVE-2021-41773', severity: 'high', cvss: 7.5,
-          title: 'HTTP ohne Verschlüsselung',
-          description: 'Webserver ohne TLS/SSL-Verschlüsselung. Daten werden im Klartext übertragen.',
-          remediation: 'Aktivieren Sie HTTPS mit einem gültigen TLS-Zertifikat. Leiten Sie HTTP auf HTTPS um.' },
-        { port: 110, service: 'POP3', cve: 'CVE-2019-3462', severity: 'medium', cvss: 6.5,
-          title: 'POP3 Klartext-Authentifizierung',
-          description: 'POP3 überträgt Anmeldedaten unverschlüsselt.',
-          remediation: 'Verwenden Sie POP3S (Port 995) mit TLS-Verschlüsselung.' },
-        { port: 111, service: 'RPCBind', cve: 'CVE-2017-8779', severity: 'critical', cvss: 9.8,
-          title: 'RPCBind DDoS-Amplification',
-          description: 'RPCBind kann für DDoS-Amplification-Angriffe missbraucht werden.',
-          remediation: 'Deaktivieren Sie RPCBind oder beschränken Sie den Zugriff per Firewall.' },
-        { port: 135, service: 'MSRPC', cve: 'CVE-2003-0352', severity: 'critical', cvss: 10.0,
-          title: 'Microsoft RPC DCOM Schwachstelle',
-          description: 'Remote Code Execution über Microsoft RPC DCOM Interface.',
-          remediation: 'Blockieren Sie Port 135 an der Firewall. Installieren Sie alle Windows-Updates.' },
-        { port: 139, service: 'NetBIOS', cve: 'CVE-2017-0143', severity: 'critical', cvss: 9.8,
-          title: 'NetBIOS Session Service exponiert',
-          description: 'NetBIOS ermöglicht Netzwerk-Enumeration und potenzielle Angriffe.',
-          remediation: 'Deaktivieren Sie NetBIOS über TCP/IP. Blockieren Sie Port 139 an der Firewall.' },
-        { port: 443, service: 'HTTPS', cve: 'CVE-2014-0160', severity: 'high', cvss: 7.5,
-          title: 'Heartbleed (OpenSSL)',
-          description: 'OpenSSL Heartbleed ermöglicht das Auslesen von Speicherinhalten des Servers.',
-          remediation: 'Aktualisieren Sie OpenSSL auf Version 1.0.1g oder höher. Erneuern Sie TLS-Zertifikate.' },
-        { port: 445, service: 'SMB', cve: 'CVE-2017-0144', severity: 'critical', cvss: 9.8,
-          title: 'EternalBlue (MS17-010)',
-          description: 'SMBv1 Remote Code Execution. Wurde von WannaCry-Ransomware ausgenutzt.',
-          remediation: 'Deaktivieren Sie SMBv1. Installieren Sie MS17-010 Patch. Blockieren Sie Port 445 extern.' },
-        { port: 445, service: 'SMB', cve: 'CVE-2020-0796', severity: 'critical', cvss: 10.0,
-          title: 'SMBGhost Schwachstelle',
-          description: 'SMBv3 Compression Remote Code Execution ohne Authentifizierung.',
-          remediation: 'Installieren Sie KB4551762. Deaktivieren Sie SMBv3 Compression.' },
-        { port: 1433, service: 'MSSQL', cve: 'CVE-2020-0618', severity: 'critical', cvss: 8.8,
-          title: 'Microsoft SQL Server exponiert',
-          description: 'SQL Server ist direkt aus dem Netzwerk erreichbar. Anfällig für Brute-Force und SQL-Injection.',
-          remediation: 'Beschränken Sie den Zugriff per Firewall. Verwenden Sie starke Passwörter und Windows-Authentifizierung.' },
-        { port: 3306, service: 'MySQL', cve: 'CVE-2012-2122', severity: 'critical', cvss: 9.8,
-          title: 'MySQL Netzwerk-Exposition',
-          description: 'MySQL-Datenbank ist direkt aus dem Netzwerk erreichbar.',
-          remediation: 'Binden Sie MySQL nur an localhost. Verwenden Sie Firewall-Regeln.' },
-        { port: 3389, service: 'RDP', cve: 'CVE-2019-0708', severity: 'critical', cvss: 9.8,
-          title: 'BlueKeep RDP Schwachstelle',
-          description: 'Remote Desktop Protocol Remote Code Execution ohne Authentifizierung.',
-          remediation: 'Installieren Sie Sicherheitsupdates. Aktivieren Sie NLA. Verwenden Sie VPN für RDP-Zugriff.' },
-        { port: 5432, service: 'PostgreSQL', cve: 'CVE-2019-9193', severity: 'high', cvss: 7.2,
-          title: 'PostgreSQL Netzwerk-Exposition',
-          description: 'PostgreSQL-Datenbank ist direkt aus dem Netzwerk erreichbar.',
-          remediation: 'Beschränken Sie pg_hba.conf auf vertrauenswürdige IPs. Binden Sie nur an localhost.' },
-        { port: 5900, service: 'VNC', cve: 'CVE-2019-15678', severity: 'critical', cvss: 9.8,
-          title: 'VNC Remote Access exponiert',
-          description: 'VNC-Server ist ohne ausreichende Absicherung erreichbar. Oft schwache oder keine Authentifizierung.',
-          remediation: 'Verwenden Sie VPN für VNC-Zugriff. Setzen Sie starke Passwörter. Verwenden Sie SSH-Tunneling.' },
-        { port: 6379, service: 'Redis', cve: 'CVE-2022-0543', severity: 'critical', cvss: 10.0,
-          title: 'Redis ohne Authentifizierung',
-          description: 'Redis-Server ist ohne Passwort erreichbar. Ermöglicht Datenzugriff und Remote Code Execution.',
-          remediation: 'Aktivieren Sie requirepass. Binden Sie Redis nur an localhost. Verwenden Sie Firewall-Regeln.' },
-        { port: 8080, service: 'HTTP-Alt', cve: 'CVE-2021-44228', severity: 'critical', cvss: 10.0,
-          title: 'Alternativer HTTP-Port exponiert',
-          description: 'Webserver auf alternativem Port. Häufig Entwicklungs- oder Proxy-Server ohne ausreichende Absicherung.',
-          remediation: 'Prüfen Sie den laufenden Dienst. Sichern Sie mit TLS ab. Beschränken Sie den Zugriff.' },
-        { port: 27017, service: 'MongoDB', cve: 'CVE-2019-2390', severity: 'critical', cvss: 9.8,
-          title: 'MongoDB ohne Authentifizierung',
-          description: 'MongoDB ist ohne Authentifizierung aus dem Netzwerk erreichbar.',
-          remediation: 'Aktivieren Sie Authentifizierung. Binden Sie MongoDB nur an localhost. Verwenden Sie Firewall-Regeln.' }
-    ];
-
-    const stmt = database.prepare(`
-        INSERT INTO vulnerabilities (cve_id, port, protocol, service, severity, title, description, remediation, cvss_score)
-        VALUES (?, ?, 'tcp', ?, ?, ?, ?, ?, ?)
-    `);
-
-    const insertAll = database.transaction((items) => {
-        for (const v of items) {
-            stmt.run(v.cve, v.port, v.service, v.severity, v.title, v.description, v.remediation, v.cvss);
-        }
-    });
-
-    insertAll(vulns);
-    logger.info(`Seeded ${vulns.length} vulnerability entries`);
 }
 
 module.exports = {
