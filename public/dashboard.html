@@ -17,43 +17,50 @@
                 <div class="logo-sm">🛡️</div>
                 <h2>SecureScope</h2>
             </div>
-
             <nav class="sidebar-nav">
                 <div class="nav-section">
                     <div class="nav-section-title">Hauptmenü</div>
                     <div class="nav-item active" data-view="dashboard" onclick="switchView('dashboard')">
-                        <i class="bi bi-grid-1x2"></i>
-                        <span>Dashboard</span>
+                        <i class="bi bi-grid-1x2"></i><span>Dashboard</span>
                     </div>
                     <div class="nav-item" data-view="new-scan" onclick="switchView('new-scan')">
-                        <i class="bi bi-search"></i>
-                        <span>Neuer Scan</span>
+                        <i class="bi bi-search"></i><span>Neuer Scan</span>
                     </div>
                     <div class="nav-item" data-view="history" onclick="switchView('history')">
-                        <i class="bi bi-clock-history"></i>
-                        <span>Scan-Historie</span>
+                        <i class="bi bi-clock-history"></i><span>Scan-Historie</span>
                     </div>
                     <div class="nav-item" data-view="compare" onclick="switchView('compare')">
-                        <i class="bi bi-arrow-left-right"></i>
-                        <span>Vergleich</span>
+                        <i class="bi bi-arrow-left-right"></i><span>Vergleich</span>
                     </div>
                 </div>
-
                 <div class="nav-section">
-                    <div class="nav-section-title">System</div>
+                    <div class="nav-section-title">Sicherheit</div>
+                    <div class="nav-item" data-view="vulnerabilities" onclick="switchView('vulnerabilities')">
+                        <i class="bi bi-bug"></i><span>Schwachstellen</span>
+                    </div>
+                    <div class="nav-item" data-view="schedules" onclick="switchView('schedules')">
+                        <i class="bi bi-calendar-check"></i><span>Geplante Scans</span>
+                    </div>
+                </div>
+                <div class="nav-section" id="adminSection">
+                    <div class="nav-section-title">Administration</div>
+                    <div class="nav-item" data-view="users" onclick="switchView('users')">
+                        <i class="bi bi-people"></i><span>Benutzerverwaltung</span>
+                    </div>
+                    <div class="nav-item" data-view="notifications" onclick="switchView('notifications')">
+                        <i class="bi bi-bell"></i><span>Benachrichtigungen</span>
+                    </div>
                     <div class="nav-item" onclick="showPasswordModal()">
-                        <i class="bi bi-key"></i>
-                        <span>Passwort ändern</span>
+                        <i class="bi bi-key"></i><span>Passwort ändern</span>
                     </div>
                 </div>
             </nav>
-
             <div class="sidebar-footer">
                 <div class="user-info">
                     <div class="user-avatar" id="userAvatar">A</div>
                     <div class="user-details">
                         <div class="username" id="sidebarUsername">Admin</div>
-                        <div class="role">Administrator</div>
+                        <div class="role" id="sidebarRole">Administrator</div>
                     </div>
                     <button class="btn-icon btn-outline" onclick="logout()" title="Abmelden">
                         <i class="bi bi-box-arrow-right"></i>
@@ -64,7 +71,6 @@
 
         <!-- Main Content -->
         <main class="main-content">
-            <!-- Top Bar -->
             <div class="topbar">
                 <div class="d-flex align-center gap-1">
                     <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
@@ -79,465 +85,256 @@
                 </div>
             </div>
 
-            <!-- ============================================ -->
-            <!-- VIEW: Dashboard Overview -->
-            <!-- ============================================ -->
+            <!-- ========== VIEW: Dashboard ========== -->
             <section class="view-section active" id="view-dashboard">
-                <!-- Stats -->
                 <div class="stats-grid" id="statsGrid">
-                    <div class="stat-card">
-                        <div class="stat-icon blue"><i class="bi bi-search"></i></div>
-                        <div class="stat-info">
-                            <h4>Scans Gesamt</h4>
-                            <div class="stat-value" id="statTotalScans">0</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon green"><i class="bi bi-check-circle"></i></div>
-                        <div class="stat-info">
-                            <h4>Abgeschlossen</h4>
-                            <div class="stat-value" id="statCompleted">0</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon red"><i class="bi bi-exclamation-triangle"></i></div>
-                        <div class="stat-info">
-                            <h4>Kritische Ports</h4>
-                            <div class="stat-value" id="statCritical">0</div>
-                        </div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-icon purple"><i class="bi bi-activity"></i></div>
-                        <div class="stat-info">
-                            <h4>Aktive Scans</h4>
-                            <div class="stat-value" id="statActive">0</div>
-                        </div>
-                    </div>
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-search"></i></div><div class="stat-info"><h4>Scans Gesamt</h4><div class="stat-value" id="statTotalScans">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon green"><i class="bi bi-check-circle"></i></div><div class="stat-info"><h4>Abgeschlossen</h4><div class="stat-value" id="statCompleted">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon red"><i class="bi bi-exclamation-triangle"></i></div><div class="stat-info"><h4>Kritische Ports</h4><div class="stat-value" id="statCritical">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-bug"></i></div><div class="stat-info"><h4>Schwachstellen</h4><div class="stat-value" id="statVulns">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-activity"></i></div><div class="stat-info"><h4>Aktive Scans</h4><div class="stat-value" id="statActive">0</div></div></div>
                 </div>
-
-                <!-- Active Scan Status -->
                 <div id="activeScanPanel" class="hidden mb-3">
                     <div class="card">
-                        <div class="card-header">
-                            <h3><i class="bi bi-broadcast mr-1"></i> Laufender Scan</h3>
-                            <button class="btn btn-danger btn-sm" id="stopActiveScanBtn" onclick="stopActiveScan()">
-                                <i class="bi bi-stop-circle"></i> Abbrechen
-                            </button>
-                        </div>
+                        <div class="card-header"><h3><i class="bi bi-broadcast mr-1"></i> Laufender Scan</h3>
+                            <button class="btn btn-danger btn-sm" onclick="stopActiveScan()"><i class="bi bi-stop-circle"></i> Abbrechen</button></div>
                         <div class="card-body">
-                            <div class="scan-running-indicator">
-                                <div class="scan-pulse"></div>
-                                <span id="activeScanInfo">Scan läuft...</span>
-                            </div>
-                            <div class="progress-container">
-                                <div class="progress-bar-wrapper">
-                                    <div class="progress-bar animated" id="activeScanProgress" style="width: 0%"></div>
-                                </div>
-                                <div class="progress-text">
-                                    <span id="activeScanProgressText">0%</span>
-                                    <span id="activeScanTarget"></span>
-                                </div>
-                            </div>
+                            <div class="scan-running-indicator"><div class="scan-pulse"></div><span id="activeScanInfo">Scan läuft...</span></div>
+                            <div class="progress-container"><div class="progress-bar-wrapper"><div class="progress-bar animated" id="activeScanProgress" style="width:0%"></div></div>
+                            <div class="progress-text"><span id="activeScanProgressText">0%</span><span id="activeScanTarget"></span></div></div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Recent Scans -->
                 <div class="card">
-                    <div class="card-header">
-                        <h3><i class="bi bi-clock-history mr-1"></i> Letzte Scans</h3>
-                        <button class="btn btn-outline btn-sm" onclick="switchView('new-scan')">
-                            <i class="bi bi-plus"></i> Neuer Scan
-                        </button>
-                    </div>
+                    <div class="card-header"><h3><i class="bi bi-clock-history mr-1"></i> Letzte Scans</h3>
+                        <button class="btn btn-outline btn-sm" onclick="switchView('new-scan')"><i class="bi bi-plus"></i> Neuer Scan</button></div>
                     <div class="card-body" id="recentScansBody">
-                        <div class="loading-overlay" id="recentScansLoading">
-                            <div class="spinner spinner-lg spinner-blue"></div>
-                            <span>Lade Daten...</span>
-                        </div>
+                        <div class="loading-overlay" id="recentScansLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Daten...</span></div>
                         <div class="table-container hidden" id="recentScansTable">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Ziel</th>
-                                        <th>Typ</th>
-                                        <th>Status</th>
-                                        <th>Ergebnisse</th>
-                                        <th>Datum</th>
-                                        <th>Aktionen</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="recentScansTableBody">
-                                </tbody>
-                            </table>
+                            <table class="data-table"><thead><tr><th>ID</th><th>Ziel</th><th>Typ</th><th>Status</th><th>Ergebnisse</th><th>Vulns</th><th>Datum</th><th>Aktionen</th></tr></thead>
+                            <tbody id="recentScansTableBody"></tbody></table>
                         </div>
-                        <div class="empty-state hidden" id="recentScansEmpty">
-                            <i class="bi bi-inbox"></i>
-                            <h4>Keine Scans vorhanden</h4>
-                            <p>Starten Sie Ihren ersten Netzwerk-Scan, um Ergebnisse zu sehen.</p>
-                        </div>
+                        <div class="empty-state hidden" id="recentScansEmpty"><i class="bi bi-inbox"></i><h4>Keine Scans vorhanden</h4><p>Starten Sie Ihren ersten Netzwerk-Scan.</p></div>
                     </div>
                 </div>
             </section>
 
-            <!-- ============================================ -->
-            <!-- VIEW: New Scan -->
-            <!-- ============================================ -->
+            <!-- ========== VIEW: New Scan ========== -->
             <section class="view-section" id="view-new-scan">
                 <div class="card mb-3">
-                    <div class="card-header">
-                        <h3><i class="bi bi-search mr-1"></i> Scan konfigurieren</h3>
-                    </div>
+                    <div class="card-header"><h3><i class="bi bi-search mr-1"></i> Scan konfigurieren</h3></div>
                     <div class="card-body">
                         <form id="scanForm" onsubmit="startScan(event)">
                             <div class="scan-config">
-                                <div class="form-group">
-                                    <label for="scanTarget">Ziel (IP-Adresse)</label>
+                                <div class="form-group"><label for="scanTarget">Ziel (IP-Adresse)</label>
                                     <input type="text" id="scanTarget" class="form-control" placeholder="z.B. 192.168.1.1" required>
-                                    <small class="text-muted mt-1" style="display:block; font-size: 0.75rem;">Einzelne IP oder CIDR-Notation (z.B. 192.168.1.0/24)</small>
-                                </div>
-                                <div class="form-group">
-                                    <label for="scanType">Scan-Typ</label>
+                                    <small class="text-muted mt-1" style="display:block;font-size:.75rem">Einzelne IP oder CIDR (z.B. 192.168.1.0/24)</small></div>
+                                <div class="form-group"><label for="scanType">Scan-Typ</label>
                                     <select id="scanType" class="form-control" onchange="toggleCustomPorts()">
                                         <option value="quick">Quick Scan (Top 100 Ports)</option>
                                         <option value="standard" selected>Standard Scan (Top 1000 Ports)</option>
                                         <option value="full">Full Scan (alle 65535 Ports)</option>
                                         <option value="custom">Custom Ports</option>
-                                    </select>
-                                </div>
-                                <div class="form-group full-width hidden" id="customPortsGroup">
-                                    <label for="customPorts">Benutzerdefinierte Ports</label>
-                                    <input type="text" id="customPorts" class="form-control" placeholder="z.B. 22,80,443,3389 oder 1-1024">
-                                    <small class="text-muted mt-1" style="display:block; font-size: 0.75rem;">Kommagetrennte Ports oder Bereiche (z.B. 22,80,443 oder 1-1024)</small>
-                                </div>
+                                    </select></div>
+                                <div class="form-group full-width hidden" id="customPortsGroup"><label for="customPorts">Benutzerdefinierte Ports</label>
+                                    <input type="text" id="customPorts" class="form-control" placeholder="z.B. 22,80,443,3389 oder 1-1024"></div>
                                 <div class="full-width">
-                                    <div id="scanWarning" class="hidden" style="padding: 0.75rem 1rem; background: var(--accent-yellow-bg); border: 1px solid rgba(245, 158, 11, 0.2); border-radius: var(--radius-sm); margin-bottom: 1rem; font-size: 0.875rem; color: var(--accent-yellow);">
-                                        <i class="bi bi-exclamation-triangle mr-1"></i>
-                                        <span id="scanWarningText"></span>
-                                    </div>
-                                    <button type="submit" id="startScanBtn" class="btn btn-primary btn-lg">
-                                        <i class="bi bi-play-fill"></i>
-                                        <span id="startScanBtnText">Scan starten</span>
-                                        <span id="startScanSpinner" class="spinner hidden"></span>
-                                    </button>
+                                    <div id="scanWarning" class="hidden" style="padding:.75rem 1rem;background:var(--accent-yellow-bg);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius-sm);margin-bottom:1rem;font-size:.875rem;color:var(--accent-yellow)">
+                                        <i class="bi bi-exclamation-triangle mr-1"></i><span id="scanWarningText"></span></div>
+                                    <button type="submit" id="startScanBtn" class="btn btn-primary btn-lg"><i class="bi bi-play-fill"></i>
+                                        <span id="startScanBtnText">Scan starten</span><span id="startScanSpinner" class="spinner hidden"></span></button>
                                 </div>
                             </div>
                         </form>
                     </div>
                 </div>
-
-                <!-- Scan Progress & Results -->
                 <div id="scanProgressPanel" class="hidden">
                     <div class="card mb-3">
-                        <div class="card-header">
-                            <h3><i class="bi bi-broadcast mr-1"></i> Scan-Fortschritt</h3>
-                            <button class="btn btn-danger btn-sm" id="stopScanBtn" onclick="stopCurrentScan()">
-                                <i class="bi bi-stop-circle"></i> Abbrechen
-                            </button>
-                        </div>
+                        <div class="card-header"><h3><i class="bi bi-broadcast mr-1"></i> Scan-Fortschritt</h3>
+                            <button class="btn btn-danger btn-sm" id="stopScanBtn" onclick="stopCurrentScan()"><i class="bi bi-stop-circle"></i> Abbrechen</button></div>
                         <div class="card-body">
-                            <div class="scan-running-indicator" id="scanRunningIndicator">
-                                <div class="scan-pulse"></div>
-                                <span id="scanProgressInfo">Scan wird gestartet...</span>
-                            </div>
-                            <div class="progress-container">
-                                <div class="progress-bar-wrapper">
-                                    <div class="progress-bar animated" id="scanProgressBar" style="width: 0%"></div>
-                                </div>
-                                <div class="progress-text">
-                                    <span id="scanProgressPercent">0%</span>
-                                    <span id="scanProgressDetail"></span>
-                                </div>
-                            </div>
+                            <div class="scan-running-indicator" id="scanRunningIndicator"><div class="scan-pulse"></div><span id="scanProgressInfo">Scan wird gestartet...</span></div>
+                            <div class="progress-container"><div class="progress-bar-wrapper"><div class="progress-bar animated" id="scanProgressBar" style="width:0%"></div></div>
+                            <div class="progress-text"><span id="scanProgressPercent">0%</span><span id="scanProgressDetail"></span></div></div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Scan Results -->
                 <div id="scanResultsPanel" class="hidden">
-                    <div class="card">
-                        <div class="card-header">
-                            <h3><i class="bi bi-table mr-1"></i> Scan-Ergebnisse</h3>
+                    <div class="card mb-3">
+                        <div class="card-header"><h3><i class="bi bi-table mr-1"></i> Scan-Ergebnisse</h3>
                             <div class="d-flex gap-1">
-                                <button class="btn btn-outline btn-sm" onclick="exportResults('csv')">
-                                    <i class="bi bi-filetype-csv"></i> CSV
-                                </button>
-                                <button class="btn btn-outline btn-sm" onclick="exportResults('json')">
-                                    <i class="bi bi-filetype-json"></i> JSON
-                                </button>
-                                <button class="btn btn-outline btn-sm" onclick="exportResults('pdf')">
-                                    <i class="bi bi-filetype-pdf"></i> PDF
-                                </button>
-                            </div>
-                        </div>
+                                <button class="btn btn-outline btn-sm" onclick="exportResults('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
+                                <button class="btn btn-outline btn-sm" onclick="exportResults('json')"><i class="bi bi-filetype-json"></i> JSON</button>
+                                <button class="btn btn-outline btn-sm" onclick="exportResults('pdf')"><i class="bi bi-filetype-pdf"></i> PDF</button>
+                            </div></div>
                         <div class="card-body">
-                            <!-- Results Summary -->
-                            <div class="stats-grid mb-3" id="resultsSummary">
-                                <div class="stat-card">
-                                    <div class="stat-icon blue"><i class="bi bi-hdd-network"></i></div>
-                                    <div class="stat-info">
-                                        <h4>Offene Ports</h4>
-                                        <div class="stat-value" id="resultTotal">0</div>
-                                    </div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-icon red"><i class="bi bi-shield-x"></i></div>
-                                    <div class="stat-info">
-                                        <h4>Kritisch</h4>
-                                        <div class="stat-value" id="resultCritical">0</div>
-                                    </div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-icon yellow"><i class="bi bi-shield-exclamation"></i></div>
-                                    <div class="stat-info">
-                                        <h4>Warnung</h4>
-                                        <div class="stat-value" id="resultWarning">0</div>
-                                    </div>
-                                </div>
-                                <div class="stat-card">
-                                    <div class="stat-icon green"><i class="bi bi-shield-check"></i></div>
-                                    <div class="stat-info">
-                                        <h4>Sicher</h4>
-                                        <div class="stat-value" id="resultSafe">0</div>
-                                    </div>
-                                </div>
+                            <div class="stats-grid mb-3">
+                                <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-hdd-network"></i></div><div class="stat-info"><h4>Offene Ports</h4><div class="stat-value" id="resultTotal">0</div></div></div>
+                                <div class="stat-card"><div class="stat-icon red"><i class="bi bi-shield-x"></i></div><div class="stat-info"><h4>Kritisch</h4><div class="stat-value" id="resultCritical">0</div></div></div>
+                                <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-shield-exclamation"></i></div><div class="stat-info"><h4>Warnung</h4><div class="stat-value" id="resultWarning">0</div></div></div>
+                                <div class="stat-card"><div class="stat-icon green"><i class="bi bi-shield-check"></i></div><div class="stat-info"><h4>Sicher</h4><div class="stat-value" id="resultSafe">0</div></div></div>
                             </div>
-
-                            <!-- Results Table -->
-                            <div class="table-container">
-                                <table class="data-table">
-                                    <thead>
-                                        <tr>
-                                            <th>IP-Adresse</th>
-                                            <th>Port</th>
-                                            <th>Protokoll</th>
-                                            <th>Service</th>
-                                            <th>Status</th>
-                                            <th>Risiko</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="resultsTableBody">
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div class="empty-state hidden" id="resultsEmpty">
-                                <i class="bi bi-shield-check"></i>
-                                <h4>Keine offenen Ports gefunden</h4>
-                                <p>Der Scan hat keine offenen Ports im angegebenen Bereich gefunden.</p>
-                            </div>
-                            <!-- Pagination -->
-                            <div id="resultsPagination" class="hidden">
-                                <div class="pagination" id="resultsPaginationBtns"></div>
-                                <div class="pagination-info" id="resultsPaginationInfo"></div>
-                            </div>
+                            <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service</th><th>Status</th><th>Risiko</th></tr></thead>
+                            <tbody id="resultsTableBody"></tbody></table></div>
+                            <div class="empty-state hidden" id="resultsEmpty"><i class="bi bi-shield-check"></i><h4>Keine offenen Ports gefunden</h4></div>
+                            <div id="resultsPagination" class="hidden"><div class="pagination" id="resultsPaginationBtns"></div><div class="pagination-info" id="resultsPaginationInfo"></div></div>
+                        </div>
+                    </div>
+                    <!-- Vulnerability matches for this scan -->
+                    <div class="card" id="scanVulnPanel">
+                        <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Gefundene Schwachstellen</h3></div>
+                        <div class="card-body">
+                            <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Schwachstelle</th><th>Severity</th><th>CVSS</th></tr></thead>
+                            <tbody id="scanVulnTableBody"></tbody></table></div>
+                            <div class="empty-state hidden" id="scanVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine bekannten Schwachstellen</h4></div>
                         </div>
                     </div>
                 </div>
             </section>
 
-            <!-- ============================================ -->
-            <!-- VIEW: Scan History -->
-            <!-- ============================================ -->
+            <!-- ========== VIEW: History ========== -->
             <section class="view-section" id="view-history">
                 <div class="card">
-                    <div class="card-header">
-                        <h3><i class="bi bi-clock-history mr-1"></i> Scan-Historie</h3>
-                    </div>
+                    <div class="card-header"><h3><i class="bi bi-clock-history mr-1"></i> Scan-Historie</h3></div>
                     <div class="card-body">
-                        <!-- Filters -->
                         <div class="filters-bar">
-                            <div class="form-group">
-                                <label>Von</label>
-                                <input type="date" id="filterDateFrom" class="form-control" onchange="loadHistory()">
-                            </div>
-                            <div class="form-group">
-                                <label>Bis</label>
-                                <input type="date" id="filterDateTo" class="form-control" onchange="loadHistory()">
-                            </div>
-                            <div class="form-group">
-                                <label>Scan-Typ</label>
-                                <select id="filterScanType" class="form-control" onchange="loadHistory()">
-                                    <option value="">Alle</option>
-                                    <option value="quick">Quick</option>
-                                    <option value="standard">Standard</option>
-                                    <option value="full">Full</option>
-                                    <option value="custom">Custom</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Status</label>
-                                <select id="filterStatus" class="form-control" onchange="loadHistory()">
-                                    <option value="">Alle</option>
-                                    <option value="completed">Abgeschlossen</option>
-                                    <option value="running">Laufend</option>
-                                    <option value="failed">Fehlgeschlagen</option>
-                                    <option value="aborted">Abgebrochen</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label>Ziel</label>
-                                <input type="text" id="filterTarget" class="form-control" placeholder="IP suchen..." oninput="debounce(loadHistory, 500)()">
-                            </div>
+                            <div class="form-group"><label>Von</label><input type="date" id="filterDateFrom" class="form-control" onchange="loadHistory()"></div>
+                            <div class="form-group"><label>Bis</label><input type="date" id="filterDateTo" class="form-control" onchange="loadHistory()"></div>
+                            <div class="form-group"><label>Scan-Typ</label><select id="filterScanType" class="form-control" onchange="loadHistory()"><option value="">Alle</option><option value="quick">Quick</option><option value="standard">Standard</option><option value="full">Full</option><option value="custom">Custom</option></select></div>
+                            <div class="form-group"><label>Status</label><select id="filterStatus" class="form-control" onchange="loadHistory()"><option value="">Alle</option><option value="completed">Abgeschlossen</option><option value="running">Laufend</option><option value="failed">Fehlgeschlagen</option><option value="aborted">Abgebrochen</option></select></div>
+                            <div class="form-group"><label>Ziel</label><input type="text" id="filterTarget" class="form-control" placeholder="IP suchen..." oninput="debounce(loadHistory,500)()"></div>
                         </div>
-
-                        <!-- History Table -->
-                        <div class="table-container">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>Ziel</th>
-                                        <th>Typ</th>
-                                        <th>Status</th>
-                                        <th>Ergebnisse</th>
-                                        <th>Gestartet</th>
-                                        <th>Dauer</th>
-                                        <th>Aktionen</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="historyTableBody">
-                                </tbody>
-                            </table>
-                        </div>
-                        <div class="empty-state hidden" id="historyEmpty">
-                            <i class="bi bi-inbox"></i>
-                            <h4>Keine Scans gefunden</h4>
-                            <p>Es wurden keine Scans gefunden, die Ihren Filterkriterien entsprechen.</p>
-                        </div>
-                        <div class="loading-overlay hidden" id="historyLoading">
-                            <div class="spinner spinner-lg spinner-blue"></div>
-                            <span>Lade Historie...</span>
-                        </div>
-                        <!-- Pagination -->
-                        <div id="historyPagination" class="hidden">
-                            <div class="pagination" id="historyPaginationBtns"></div>
-                            <div class="pagination-info" id="historyPaginationInfo"></div>
-                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Ziel</th><th>Typ</th><th>Status</th><th>Ergebnisse</th><th>Gestartet</th><th>Dauer</th><th>Aktionen</th></tr></thead>
+                        <tbody id="historyTableBody"></tbody></table></div>
+                        <div class="empty-state hidden" id="historyEmpty"><i class="bi bi-inbox"></i><h4>Keine Scans gefunden</h4></div>
+                        <div class="loading-overlay hidden" id="historyLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Historie...</span></div>
+                        <div id="historyPagination" class="hidden"><div class="pagination" id="historyPaginationBtns"></div><div class="pagination-info" id="historyPaginationInfo"></div></div>
                     </div>
                 </div>
             </section>
 
-            <!-- ============================================ -->
-            <!-- VIEW: Compare Scans -->
-            <!-- ============================================ -->
+            <!-- ========== VIEW: Compare ========== -->
             <section class="view-section" id="view-compare">
                 <div class="card mb-3">
-                    <div class="card-header">
-                        <h3><i class="bi bi-arrow-left-right mr-1"></i> Scans vergleichen</h3>
-                    </div>
+                    <div class="card-header"><h3><i class="bi bi-arrow-left-right mr-1"></i> Scans vergleichen</h3></div>
                     <div class="card-body">
                         <div class="scan-config">
-                            <div class="form-group">
-                                <label for="compareScan1">Scan 1 (ID)</label>
-                                <input type="number" id="compareScan1" class="form-control" placeholder="Scan-ID eingeben" min="1">
-                            </div>
-                            <div class="form-group">
-                                <label for="compareScan2">Scan 2 (ID)</label>
-                                <input type="number" id="compareScan2" class="form-control" placeholder="Scan-ID eingeben" min="1">
-                            </div>
-                            <div class="full-width">
-                                <button class="btn btn-primary" onclick="compareScans()">
-                                    <i class="bi bi-arrow-left-right"></i> Vergleichen
-                                </button>
-                            </div>
+                            <div class="form-group"><label for="compareScan1">Scan 1 (ID)</label><input type="number" id="compareScan1" class="form-control" placeholder="Scan-ID" min="1"></div>
+                            <div class="form-group"><label for="compareScan2">Scan 2 (ID)</label><input type="number" id="compareScan2" class="form-control" placeholder="Scan-ID" min="1"></div>
+                            <div class="full-width"><button class="btn btn-primary" onclick="compareScans()"><i class="bi bi-arrow-left-right"></i> Vergleichen</button></div>
                         </div>
                     </div>
                 </div>
-
-                <!-- Comparison Results -->
                 <div id="comparisonResults" class="hidden">
-                    <!-- Summary -->
                     <div class="stats-grid mb-3">
-                        <div class="stat-card">
-                            <div class="stat-icon green"><i class="bi bi-plus-circle"></i></div>
-                            <div class="stat-info">
-                                <h4>Neue Ports</h4>
-                                <div class="stat-value" id="compareNew">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon red"><i class="bi bi-dash-circle"></i></div>
-                            <div class="stat-info">
-                                <h4>Geschlossene Ports</h4>
-                                <div class="stat-value" id="compareClosed">0</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon blue"><i class="bi bi-arrow-repeat"></i></div>
-                            <div class="stat-info">
-                                <h4>Unverändert</h4>
-                                <div class="stat-value" id="compareUnchanged">0</div>
-                            </div>
-                        </div>
+                        <div class="stat-card"><div class="stat-icon green"><i class="bi bi-plus-circle"></i></div><div class="stat-info"><h4>Neue Ports</h4><div class="stat-value" id="compareNew">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon red"><i class="bi bi-dash-circle"></i></div><div class="stat-info"><h4>Geschlossene Ports</h4><div class="stat-value" id="compareClosed">0</div></div></div>
+                        <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-arrow-repeat"></i></div><div class="stat-info"><h4>Unverändert</h4><div class="stat-value" id="compareUnchanged">0</div></div></div>
                     </div>
-
                     <div class="comparison-grid">
-                        <!-- Only in Scan 2 (New) -->
-                        <div class="card comparison-new">
-                            <div class="card-header">
-                                <h3 class="text-success"><i class="bi bi-plus-circle mr-1"></i> Nur in Scan 2 (Neu)</h3>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-container">
-                                    <table class="data-table">
-                                        <thead>
-                                            <tr><th>IP</th><th>Port</th><th>Service</th><th>Risiko</th></tr>
-                                        </thead>
-                                        <tbody id="compareNewBody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Only in Scan 1 (Removed) -->
-                        <div class="card comparison-removed">
-                            <div class="card-header">
-                                <h3 class="text-danger"><i class="bi bi-dash-circle mr-1"></i> Nur in Scan 1 (Geschlossen)</h3>
-                            </div>
-                            <div class="card-body">
-                                <div class="table-container">
-                                    <table class="data-table">
-                                        <thead>
-                                            <tr><th>IP</th><th>Port</th><th>Service</th><th>Risiko</th></tr>
-                                        </thead>
-                                        <tbody id="compareRemovedBody"></tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>
+                        <div class="card comparison-new"><div class="card-header"><h3 class="text-success"><i class="bi bi-plus-circle mr-1"></i> Nur in Scan 2 (Neu)</h3></div>
+                            <div class="card-body"><div class="table-container"><table class="data-table"><thead><tr><th>IP</th><th>Port</th><th>Service</th><th>Risiko</th></tr></thead><tbody id="compareNewBody"></tbody></table></div></div></div>
+                        <div class="card comparison-removed"><div class="card-header"><h3 class="text-danger"><i class="bi bi-dash-circle mr-1"></i> Nur in Scan 1 (Geschlossen)</h3></div>
+                            <div class="card-body"><div class="table-container"><table class="data-table"><thead><tr><th>IP</th><th>Port</th><th>Service</th><th>Risiko</th></tr></thead><tbody id="compareRemovedBody"></tbody></table></div></div></div>
                     </div>
                 </div>
             </section>
 
-            <!-- ============================================ -->
-            <!-- VIEW: Scan Detail (dynamically shown) -->
-            <!-- ============================================ -->
+            <!-- ========== VIEW: Vulnerabilities ========== -->
+            <section class="view-section" id="view-vulnerabilities">
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Schwachstellen-Datenbank</h3></div>
+                    <div class="card-body">
+                        <div class="filters-bar">
+                            <div class="form-group"><label>Severity</label>
+                                <select id="vulnFilterSeverity" class="form-control" onchange="loadVulnerabilities()"><option value="">Alle</option><option value="critical">Kritisch</option><option value="high">Hoch</option><option value="medium">Mittel</option><option value="low">Niedrig</option></select></div>
+                            <div class="form-group"><label>Service</label><input type="text" id="vulnFilterService" class="form-control" placeholder="z.B. SSH, HTTP..." oninput="debounce(loadVulnerabilities,500)()"></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="vulnFilterSearch" class="form-control" placeholder="CVE, Titel..." oninput="debounce(loadVulnerabilities,500)()"></div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>CVE</th><th>Port</th><th>Service</th><th>Schwachstelle</th><th>Severity</th><th>CVSS</th><th>Maßnahme</th></tr></thead>
+                        <tbody id="vulnTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="vulnLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Schwachstellen...</span></div>
+                        <div class="empty-state hidden" id="vulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine Schwachstellen gefunden</h4></div>
+                        <div id="vulnPagination" class="hidden"><div class="pagination" id="vulnPaginationBtns"></div><div class="pagination-info" id="vulnPaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Scheduled Scans ========== -->
+            <section class="view-section" id="view-schedules">
+                <div class="card mb-3">
+                    <div class="card-header"><h3><i class="bi bi-calendar-check mr-1"></i> Geplante Scans</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showScheduleModal()"><i class="bi bi-plus"></i> Neuer Plan</button></div>
+                    <div class="card-body">
+                        <div class="table-container"><table class="data-table"><thead><tr><th>Name</th><th>Ziel</th><th>Typ</th><th>Zeitplan</th><th>Status</th><th>Letzter Lauf</th><th>Aktionen</th></tr></thead>
+                        <tbody id="schedulesTableBody"></tbody></table></div>
+                        <div class="empty-state hidden" id="schedulesEmpty"><i class="bi bi-calendar-x"></i><h4>Keine geplanten Scans</h4><p>Erstellen Sie einen Zeitplan für automatische Scans.</p></div>
+                        <div class="loading-overlay hidden" id="schedulesLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Zeitpläne...</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: User Management ========== -->
+            <section class="view-section" id="view-users">
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-people mr-1"></i> Benutzerverwaltung</h3>
+                        <button class="btn btn-primary btn-sm" onclick="showUserModal()"><i class="bi bi-person-plus"></i> Neuer Benutzer</button></div>
+                    <div class="card-body">
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Benutzername</th><th>Rollen</th><th>Erstellt</th><th>Letzter Login</th><th>Aktionen</th></tr></thead>
+                        <tbody id="usersTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="usersLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Benutzer...</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Notifications ========== -->
+            <section class="view-section" id="view-notifications">
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-bell mr-1"></i> E-Mail-Benachrichtigungen</h3></div>
+                    <div class="card-body">
+                        <form id="notificationForm" onsubmit="saveNotificationSettings(event)">
+                            <div class="scan-config">
+                                <div class="form-group full-width">
+                                    <label class="d-flex align-center gap-1"><input type="checkbox" id="emailEnabled" onchange="toggleEmailFields()"> E-Mail-Benachrichtigungen aktivieren</label></div>
+                                <div id="emailFields">
+                                    <div class="scan-config">
+                                        <div class="form-group"><label>E-Mail-Adresse</label><input type="email" id="notifEmail" class="form-control" placeholder="ihre@email.de"></div>
+                                        <div class="form-group"><label>SMTP-Host</label><input type="text" id="smtpHost" class="form-control" placeholder="smtp.gmail.com"></div>
+                                        <div class="form-group"><label>SMTP-Port</label><input type="number" id="smtpPort" class="form-control" value="587"></div>
+                                        <div class="form-group"><label class="d-flex align-center gap-1"><input type="checkbox" id="smtpSecure"> SSL/TLS verwenden</label></div>
+                                        <div class="form-group"><label>SMTP-Benutzer</label><input type="text" id="smtpUser" class="form-control" placeholder="Benutzername"></div>
+                                        <div class="form-group"><label>SMTP-Passwort</label><input type="password" id="smtpPass" class="form-control" placeholder="Passwort"></div>
+                                        <div class="form-group full-width" style="border-top:1px solid var(--border-color);padding-top:1rem;margin-top:.5rem">
+                                            <h4 style="font-size:.875rem;margin-bottom:.75rem">Benachrichtigen bei:</h4>
+                                            <label class="d-flex align-center gap-1 mb-1"><input type="checkbox" id="notifScanComplete" checked> Scan abgeschlossen</label>
+                                            <label class="d-flex align-center gap-1 mb-1"><input type="checkbox" id="notifCritical" checked> Kritische Schwachstellen gefunden</label>
+                                            <label class="d-flex align-center gap-1 mb-1"><input type="checkbox" id="notifScheduled" checked> Geplante Scan-Berichte</label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="full-width d-flex gap-1">
+                                    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg"></i> Speichern</button>
+                                    <button type="button" class="btn btn-outline" onclick="testEmail()"><i class="bi bi-envelope"></i> Test-E-Mail senden</button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Scan Detail ========== -->
             <section class="view-section" id="view-scan-detail">
                 <div class="d-flex align-center gap-1 mb-3">
-                    <button class="btn btn-outline btn-sm" onclick="goBackFromDetail()">
-                        <i class="bi bi-arrow-left"></i> Zurück
-                    </button>
-                    <h3 id="scanDetailTitle">Scan Details</h3>
-                </div>
-
+                    <button class="btn btn-outline btn-sm" onclick="goBackFromDetail()"><i class="bi bi-arrow-left"></i> Zurück</button>
+                    <h3 id="scanDetailTitle">Scan Details</h3></div>
                 <div class="card mb-3">
-                    <div class="card-header">
-                        <h3><i class="bi bi-info-circle mr-1"></i> Scan-Informationen</h3>
+                    <div class="card-header"><h3><i class="bi bi-info-circle mr-1"></i> Scan-Informationen</h3>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('csv')">
-                                <i class="bi bi-filetype-csv"></i> CSV
-                            </button>
-                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('json')">
-                                <i class="bi bi-filetype-json"></i> JSON
-                            </button>
-                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('pdf')">
-                                <i class="bi bi-filetype-pdf"></i> PDF
-                            </button>
-                        </div>
-                    </div>
+                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
+                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('json')"><i class="bi bi-filetype-json"></i> JSON</button>
+                            <button class="btn btn-outline btn-sm" onclick="exportDetailResults('pdf')"><i class="bi bi-filetype-pdf"></i> PDF</button></div></div>
                     <div class="card-body">
-                        <div class="scan-config" style="gap: 0.5rem;">
+                        <div class="scan-config" style="gap:.5rem">
                             <div><strong>ID:</strong> <span id="detailId" class="text-mono"></span></div>
                             <div><strong>Ziel:</strong> <span id="detailTarget" class="text-mono"></span></div>
                             <div><strong>Typ:</strong> <span id="detailType"></span></div>
@@ -547,83 +344,70 @@
                         </div>
                     </div>
                 </div>
-
-                <!-- Detail Results Summary -->
                 <div class="stats-grid mb-3" id="detailSummary"></div>
-
-                <!-- Detail Results Table -->
-                <div class="card">
-                    <div class="card-header">
-                        <h3><i class="bi bi-table mr-1"></i> Ergebnisse</h3>
-                    </div>
+                <div class="card mb-3">
+                    <div class="card-header"><h3><i class="bi bi-table mr-1"></i> Ergebnisse</h3></div>
                     <div class="card-body">
-                        <div class="table-container">
-                            <table class="data-table">
-                                <thead>
-                                    <tr>
-                                        <th>IP-Adresse</th>
-                                        <th>Port</th>
-                                        <th>Protokoll</th>
-                                        <th>Service</th>
-                                        <th>Status</th>
-                                        <th>Risiko</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="detailResultsBody"></tbody>
-                            </table>
-                        </div>
-                        <div class="empty-state hidden" id="detailResultsEmpty">
-                            <i class="bi bi-shield-check"></i>
-                            <h4>Keine Ergebnisse</h4>
-                        </div>
-                        <div id="detailPagination" class="hidden">
-                            <div class="pagination" id="detailPaginationBtns"></div>
-                            <div class="pagination-info" id="detailPaginationInfo"></div>
-                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>IP-Adresse</th><th>Port</th><th>Protokoll</th><th>Service</th><th>Status</th><th>Risiko</th></tr></thead>
+                        <tbody id="detailResultsBody"></tbody></table></div>
+                        <div class="empty-state hidden" id="detailResultsEmpty"><i class="bi bi-shield-check"></i><h4>Keine Ergebnisse</h4></div>
+                        <div id="detailPagination" class="hidden"><div class="pagination" id="detailPaginationBtns"></div><div class="pagination-info" id="detailPaginationInfo"></div></div>
+                    </div>
+                </div>
+                <div class="card" id="detailVulnCard">
+                    <div class="card-header"><h3><i class="bi bi-bug mr-1"></i> Schwachstellen</h3></div>
+                    <div class="card-body">
+                        <div class="table-container"><table class="data-table"><thead><tr><th>IP:Port</th><th>CVE</th><th>Schwachstelle</th><th>Severity</th><th>CVSS</th><th>Maßnahme</th></tr></thead>
+                        <tbody id="detailVulnBody"></tbody></table></div>
+                        <div class="empty-state hidden" id="detailVulnEmpty"><i class="bi bi-shield-check"></i><h4>Keine Schwachstellen</h4></div>
                     </div>
                 </div>
             </section>
         </main>
     </div>
 
-    <!-- ============================================ -->
-    <!-- Password Change Modal -->
-    <!-- ============================================ -->
+    <!-- ========== Password Modal ========== -->
     <div class="modal-overlay hidden" id="passwordModal">
-        <div class="modal">
-            <div class="modal-header">
-                <h3><i class="bi bi-key mr-1"></i> Passwort ändern</h3>
-                <button class="btn-icon btn-outline" onclick="hidePasswordModal()">
-                    <i class="bi bi-x-lg"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form id="dashboardPwForm" onsubmit="changePassword(event)">
-                    <div class="form-group">
-                        <label>Aktuelles Passwort</label>
-                        <input type="password" id="modalCurrentPw" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Neues Passwort</label>
-                        <input type="password" id="modalNewPw" class="form-control" required>
-                    </div>
-                    <div class="form-group">
-                        <label>Passwort bestätigen</label>
-                        <input type="password" id="modalConfirmPw" class="form-control" required>
-                    </div>
-                    <ul class="password-requirements">
-                        <li>Mindestens 8 Zeichen</li>
-                        <li>Groß- und Kleinbuchstaben</li>
-                        <li>Mindestens eine Zahl</li>
-                    </ul>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-outline" onclick="hidePasswordModal()">Abbrechen</button>
-                <button class="btn btn-success" onclick="changePassword(event)">
-                    <i class="bi bi-check-lg"></i> Speichern
-                </button>
-            </div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-key mr-1"></i> Passwort ändern</h3><button class="btn-icon btn-outline" onclick="hidePasswordModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="dashboardPwForm" onsubmit="changePassword(event)">
+                <div class="form-group"><label>Aktuelles Passwort</label><input type="password" id="modalCurrentPw" class="form-control" required></div>
+                <div class="form-group"><label>Neues Passwort</label><input type="password" id="modalNewPw" class="form-control" required></div>
+                <div class="form-group"><label>Passwort bestätigen</label><input type="password" id="modalConfirmPw" class="form-control" required></div>
+                <ul class="password-requirements"><li>Mindestens 8 Zeichen</li><li>Groß- und Kleinbuchstaben</li><li>Mindestens eine Zahl</li></ul></form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hidePasswordModal()">Abbrechen</button><button class="btn btn-success" onclick="changePassword(event)"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== Schedule Modal ========== -->
+    <div class="modal-overlay hidden" id="scheduleModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-calendar-plus mr-1"></i> <span id="scheduleModalTitle">Neuer geplanter Scan</span></h3><button class="btn-icon btn-outline" onclick="hideScheduleModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="scheduleForm">
+                <input type="hidden" id="scheduleEditId">
+                <div class="form-group"><label>Name</label><input type="text" id="scheduleName" class="form-control" placeholder="z.B. Nightly Server Scan" required></div>
+                <div class="form-group"><label>Ziel</label><input type="text" id="scheduleTarget" class="form-control" placeholder="z.B. 192.168.1.0/24" required></div>
+                <div class="form-group"><label>Scan-Typ</label><select id="scheduleScanType" class="form-control"><option value="quick">Quick</option><option value="standard" selected>Standard</option><option value="full">Full</option><option value="custom">Custom</option></select></div>
+                <div class="form-group"><label>Zeitplan (Cron)</label>
+                    <select id="schedulePreset" class="form-control" onchange="applyCronPreset()"><option value="">Benutzerdefiniert...</option></select>
+                    <input type="text" id="scheduleCron" class="form-control mt-1" placeholder="0 2 * * *" required>
+                    <small class="text-muted" style="display:block;font-size:.75rem;margin-top:.25rem">Format: Minute Stunde Tag Monat Wochentag</small></div>
+                <div class="form-group"><label class="d-flex align-center gap-1"><input type="checkbox" id="scheduleNotifyComplete" checked> Bei Abschluss benachrichtigen</label></div>
+                <div class="form-group"><label class="d-flex align-center gap-1"><input type="checkbox" id="scheduleNotifyCritical" checked> Bei kritischen Funden benachrichtigen</label></div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideScheduleModal()">Abbrechen</button><button class="btn btn-success" onclick="saveSchedule()"><i class="bi bi-check-lg"></i> Speichern</button></div>
+        </div>
+    </div>
+
+    <!-- ========== User Modal ========== -->
+    <div class="modal-overlay hidden" id="userModal">
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-person-plus mr-1"></i> <span id="userModalTitle">Neuer Benutzer</span></h3><button class="btn-icon btn-outline" onclick="hideUserModal()"><i class="bi bi-x-lg"></i></button></div>
+            <div class="modal-body"><form id="userForm">
+                <input type="hidden" id="userEditId">
+                <div class="form-group"><label>Benutzername</label><input type="text" id="userFormName" class="form-control" placeholder="benutzername" required></div>
+                <div class="form-group"><label>Passwort</label><input type="password" id="userFormPass" class="form-control" placeholder="Mindestens 8 Zeichen" required></div>
+                <div class="form-group"><label>Rollen</label>
+                    <div id="userRoleCheckboxes"></div></div>
+            </form></div>
+            <div class="modal-footer"><button class="btn btn-outline" onclick="hideUserModal()">Abbrechen</button><button class="btn btn-success" onclick="saveUser()"><i class="bi bi-check-lg"></i> Speichern</button></div>
         </div>
     </div>
 
