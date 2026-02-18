@@ -80,7 +80,7 @@
                         <div class="username" id="sidebarUsername">Admin</div>
                         <div class="role" id="sidebarRole">Administrator</div>
                     </div>
-                    <button class="btn-icon btn-outline" onclick="logout()" title="Abmelden">
+                    <button class="btn-icon btn-outline" onclick="logout()" title="Abmelden" aria-label="Abmelden">
                         <i class="bi bi-box-arrow-right"></i>
                     </button>
                 </div>
@@ -91,13 +91,13 @@
         <main class="main-content">
             <div class="topbar">
                 <div class="d-flex align-center gap-1">
-                    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+                    <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()" aria-label="Sidebar umschalten">
                         <i class="bi bi-list"></i>
                     </button>
                     <h1 id="viewTitle">Dashboard</h1>
                 </div>
                 <div class="topbar-actions">
-                    <button class="theme-toggle" onclick="toggleTheme()" title="Theme wechseln">
+                    <button class="theme-toggle" onclick="toggleTheme()" title="Theme wechseln" aria-label="Design wechseln">
                         <i class="bi bi-moon-stars" id="themeIcon"></i>
                     </button>
                 </div>
