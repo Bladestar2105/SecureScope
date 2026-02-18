@@ -1,0 +1,42 @@
+version: '3.8'
+
+services:
+  securescope:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: securescope
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - SESSION_SECRET=${SESSION_SECRET:-change_this_to_a_random_secret_in_production}
+      - CSRF_SECRET=${CSRF_SECRET:-change_this_csrf_secret_in_production}
+      - DATABASE_PATH=/app/database/securescope.db
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - SCAN_TIMEOUT=${SCAN_TIMEOUT:-300000}
+      - MAX_CONCURRENT_SCANS=${MAX_CONCURRENT_SCANS:-3}
+      - ALLOW_EXTERNAL_SCANS=${ALLOW_EXTERNAL_SCANS:-false}
+    volumes:
+      - securescope_data:/app/database
+      - securescope_logs:/app/logs
+    networks:
+      - securescope_net
+    healthcheck:
+      test: ["CMD", "node", "-e", "const http = require('http'); http.get('http://localhost:3000/api/auth/status', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  securescope_data:
+    driver: local
+  securescope_logs:
+    driver: local
+
+networks:
+  securescope_net:
+    driver: bridge
