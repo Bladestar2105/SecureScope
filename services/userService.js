@@ -4,20 +4,25 @@ const logger = require('./logger');
 
 const SALT_ROUNDS = 10;
 
+// Pre-computed hash for timing attack mitigation (hash of "dummy")
+const DUMMY_HASH = '$2b$10$n6xamPKbFHuQkusPQ/EE1uFfH95wsHHTtgBd/FPL0U5wun15tzWNG';
+
 class UserService {
     // Authenticate user with username and password
     static async authenticate(username, password) {
         const db = getDatabase();
         const user = db.prepare('SELECT * FROM users WHERE username = ?').get(username);
 
-        if (!user) {
-            logger.warn(`Login attempt with unknown username: ${username}`);
-            return null;
-        }
+        // Always compare password to prevent timing attacks (username enumeration)
+        const hashToCompare = user ? user.password_hash : DUMMY_HASH;
+        const isValid = await bcrypt.compare(password, hashToCompare);
 
-        const isValid = await bcrypt.compare(password, user.password_hash);
-        if (!isValid) {
-            logger.warn(`Failed login attempt for user: ${username}`);
+        if (!user || !isValid) {
+            if (!user) {
+                logger.warn(`Login attempt with unknown username: ${username}`);
+            } else {
+                logger.warn(`Failed login attempt for user: ${username}`);
+            }
             return null;
         }
 
