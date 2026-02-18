@@ -83,8 +83,8 @@ router.get('/status', (req, res) => {
             return res.json({ authenticated: false });
         }
 
-        // Regenerate CSRF token
-        const csrfToken = generateCsrfToken(req);
+        // Regenerate CSRF token only if not exists
+        const csrfToken = req.session.csrfToken || generateCsrfToken(req);
 
         return res.json({
             authenticated: true,

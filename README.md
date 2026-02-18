@@ -192,7 +192,7 @@ securescope/
 │   └── scan.js               # Scan-API-Routen & SSE
 ├── services/
 │   ├── logger.js             # Winston Logger mit Rotation
-│   ├── scanner.js            # Port-Scan-Engine (evilscan)
+│   ├── scanner.js            # Port-Scan-Engine (nmap)
 │   └── userService.js        # Benutzerverwaltung
 ├── public/
 │   ├── index.html            # Login-Seite

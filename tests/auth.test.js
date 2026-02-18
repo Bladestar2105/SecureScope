@@ -6,11 +6,17 @@ process.env.SESSION_SECRET = 'test-secret-key';
 const request = require('supertest');
 const { app } = require('../server');
 const { initializeDatabase, closeDatabase, getDatabase } = require('../config/database');
+const scannerService = require('../services/scanner');
 
 let server;
 let agent;
 
 beforeAll((done) => {
+    // Mock _executeScan to avoid running nmap and DB crash during tests
+    jest.spyOn(scannerService, '_executeScan').mockImplementation(async () => {
+        // Do nothing
+    });
+
     // Initialize in-memory database
     initializeDatabase();
     server = app.listen(0, () => {
@@ -20,6 +26,7 @@ beforeAll((done) => {
 });
 
 afterAll((done) => {
+    jest.restoreAllMocks();
     closeDatabase();
     server.close(done);
 });
