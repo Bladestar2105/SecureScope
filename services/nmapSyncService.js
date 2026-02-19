@@ -44,18 +44,21 @@ class NmapSyncService {
                     if (res.statusCode !== 200) {
                         return reject(new Error(`HTTP ${res.statusCode}`));
                     }
-                    const chunks = [];
-                    let downloaded = 0;
-                    res.on('data', (chunk) => {
-                        chunks.push(chunk);
-                        downloaded += chunk.length;
+                    const fileStream = fs.createWriteStream(destPath);
+                    res.pipe(fileStream);
+                    fileStream.on('finish', () => {
+                        fileStream.close();
+                        resolve(destPath);
                     });
-                    res.on('end', () => {
-                        const data = Buffer.concat(chunks);
-                        fs.writeFileSync(destPath, data);
-                        resolve(data.toString('utf8'));
+                    fileStream.on('error', (err) => {
+                        fs.unlink(destPath, () => {});
+                        reject(err);
                     });
-                    res.on('error', reject);
+                    res.on('error', (err) => {
+                        fileStream.destroy();
+                        fs.unlink(destPath, () => {});
+                        reject(err);
+                    });
                 }).on('error', reject);
             };
             doRequest(url);
@@ -80,31 +83,31 @@ class NmapSyncService {
             // Step 1: Download nmap-services
             this.emitProgress('download', 5, 'Lade nmap-services herunter...');
             const servicesPath = path.join(NMAP_DIR, 'nmap-services');
-            const servicesData = await this.downloadFile(NMAP_SOURCES.services, servicesPath);
+            await this.downloadFile(NMAP_SOURCES.services, servicesPath);
 
             // Step 2: Download nmap-os-db
             this.emitProgress('download', 20, 'Lade nmap-os-db herunter...');
             const osDbPath = path.join(NMAP_DIR, 'nmap-os-db');
-            const osDbData = await this.downloadFile(NMAP_SOURCES.osDb, osDbPath);
+            await this.downloadFile(NMAP_SOURCES.osDb, osDbPath);
 
             // Step 3: Download nmap-service-probes
             this.emitProgress('download', 35, 'Lade nmap-service-probes herunter...');
             const probesPath = path.join(NMAP_DIR, 'nmap-service-probes');
-            const probesData = await this.downloadFile(NMAP_SOURCES.serviceProbes, probesPath);
+            await this.downloadFile(NMAP_SOURCES.serviceProbes, probesPath);
 
             // Step 4: Parse nmap-services
             this.emitProgress('parse', 45, 'Parse nmap-services...');
-            const services = this.parseNmapServices(servicesData);
+            const services = await this.parseNmapServices(servicesPath);
             logger.info(`Parsed ${services.length} entries from nmap-services`);
 
             // Step 5: Parse nmap-os-db
             this.emitProgress('parse', 55, 'Parse nmap-os-db...');
-            const osFingerprints = this.parseNmapOsDb(osDbData);
+            const osFingerprints = await this.parseNmapOsDb(osDbPath);
             logger.info(`Parsed ${osFingerprints.length} OS fingerprints from nmap-os-db`);
 
             // Step 6: Parse nmap-service-probes
             this.emitProgress('parse', 65, 'Parse nmap-service-probes...');
-            const serviceProbes = this.parseNmapServiceProbes(probesData);
+            const serviceProbes = await this.parseNmapServiceProbes(probesPath);
             logger.info(`Parsed ${serviceProbes.length} service probes from nmap-service-probes`);
 
             // Step 7: Import into database
@@ -211,11 +214,13 @@ class NmapSyncService {
      * Parse nmap-services file
      * Format: service_name\tport/protocol\tfrequency\t# comment
      */
-    static parseNmapServices(data) {
+    static async parseNmapServices(filePath) {
         const results = [];
-        const lines = data.split('\n');
+        const readline = require('readline');
+        const fileStream = fs.createReadStream(filePath);
+        const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
-        for (const line of lines) {
+        for await (const line of rl) {
             if (line.startsWith('#') || line.trim() === '') continue;
 
             const parts = line.split('\t');
@@ -252,14 +257,14 @@ class NmapSyncService {
      * Parse nmap-os-db file
      * Format: Fingerprint blocks starting with "Fingerprint" line
      */
-    static parseNmapOsDb(data) {
+    static async parseNmapOsDb(filePath) {
         const results = [];
-        const lines = data.split('\n');
+        const readline = require('readline');
+        const fileStream = fs.createReadStream(filePath);
+        const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
         let current = null;
 
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-
+        for await (const line of rl) {
             if (line.startsWith('Fingerprint ')) {
                 // Save previous
                 if (current) results.push(current);
@@ -300,12 +305,14 @@ class NmapSyncService {
      * Parse nmap-service-probes file
      * Format: Probe blocks with match directives
      */
-    static parseNmapServiceProbes(data) {
+    static async parseNmapServiceProbes(filePath) {
         const results = [];
-        const lines = data.split('\n');
+        const readline = require('readline');
+        const fileStream = fs.createReadStream(filePath);
+        const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
         let currentProbe = null;
 
-        for (const line of lines) {
+        for await (const line of rl) {
             if (line.startsWith('#') || line.trim() === '') continue;
 
             if (line.startsWith('Probe ')) {

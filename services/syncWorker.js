@@ -14,6 +14,7 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
+const readline = require('readline');
 const { execSync } = require('child_process');
 
 const Database = require('better-sqlite3');
@@ -228,7 +229,6 @@ async function syncCVE(userId) {
                     } catch { totalErrors++; }
 
                     if (batch.length >= BATCH_SIZE) {
-                        const before = totalAdded;
                         insertBatch(batch);
                         totalAdded += batch.length;
                         yearAdded += batch.length;
@@ -364,28 +364,22 @@ async function syncFingerprints(userId) {
 
     try {
         emit('download', 5, 'Lade nmap-services...');
-        const svcData = await downloadToString('https://raw.githubusercontent.com/nmap/nmap/master/nmap-services');
-        fs.writeFileSync(path.join(NMAP_DIR, 'nmap-services'), svcData);
+        const svcPath = path.join(NMAP_DIR, 'nmap-services');
+        await downloadToFile('https://raw.githubusercontent.com/nmap/nmap/master/nmap-services', svcPath);
 
         emit('download', 20, 'Lade nmap-os-db...');
-        const osData = await downloadToString('https://raw.githubusercontent.com/nmap/nmap/master/nmap-os-db');
-        fs.writeFileSync(path.join(NMAP_DIR, 'nmap-os-db'), osData);
+        const osPath = path.join(NMAP_DIR, 'nmap-os-db');
+        await downloadToFile('https://raw.githubusercontent.com/nmap/nmap/master/nmap-os-db', osPath);
 
         emit('download', 35, 'Lade nmap-service-probes...');
-        const probeData = await downloadToString('https://raw.githubusercontent.com/nmap/nmap/master/nmap-service-probes');
-        fs.writeFileSync(path.join(NMAP_DIR, 'nmap-service-probes'), probeData);
+        const probePath = path.join(NMAP_DIR, 'nmap-service-probes');
+        await downloadToFile('https://raw.githubusercontent.com/nmap/nmap/master/nmap-service-probes', probePath);
 
         emit('parse', 45, 'Parse nmap-services...');
-        const services = parseNmapServices(svcData);
-        emit('parse', 55, 'Parse nmap-os-db...');
-        const osFingerprints = parseNmapOsDb(osData);
-        emit('parse', 65, 'Parse nmap-service-probes...');
-        const serviceProbes = parseNmapServiceProbes(probeData);
-
-        emit('import', 70, `Importiere ${services.length + osFingerprints.length} Einträge + Probes...`);
 
         let added = 0;
         const BATCH = 1000;
+        let batch = [];
 
         database.prepare("DELETE FROM fingerprints WHERE source IN ('nmap-services', 'nmap-os-db', 'nmap-service-probes')").run();
 
@@ -394,39 +388,59 @@ async function syncFingerprints(userId) {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        for (let i = 0; i < services.length; i += BATCH) {
-            const batch = services.slice(i, i + BATCH);
-            database.transaction((items) => {
-                for (const s of items) {
-                    insertStmt.run(s.port, s.protocol, s.name, null, null, null, null, null, s.description || s.name, Math.round(s.frequency * 100) || 50, 'nmap-services');
-                    added++;
-                }
-            })(batch);
+        const insertBatch = database.transaction((items) => {
+            for (const s of items) {
+                insertStmt.run(s.port, s.protocol, s.service_name, s.version_pattern, s.banner_pattern, s.os_family, s.os_version, s.cpe, s.description, s.confidence, s.source);
+                added++;
+            }
+        });
+
+        // 1. Process nmap-services
+        for await (const s of parseNmapServices(svcPath)) {
+            batch.push({
+                port: s.port, protocol: s.protocol, service_name: s.name,
+                version_pattern: null, banner_pattern: null, os_family: null, os_version: null,
+                cpe: null, description: s.description || s.name,
+                confidence: Math.round(s.frequency * 100) || 50,
+                source: 'nmap-services'
+            });
+            if (batch.length >= BATCH) { insertBatch(batch); batch = []; }
         }
+        if (batch.length > 0) { insertBatch(batch); batch = []; }
         emit('import', 80, `nmap-services: ${added} importiert`);
 
-        for (let i = 0; i < osFingerprints.length; i += BATCH) {
-            database.transaction((items) => {
-                for (const os of items) {
-                    insertStmt.run(0, 'tcp', os.name, os.version || null, null, os.osFamily, os.osVersion, os.cpe || null, `OS: ${os.name}`, os.confidence || 70, 'nmap-os-db');
-                    added++;
-                }
-            })(osFingerprints.slice(i, i + BATCH));
+        // 2. Process nmap-os-db
+        emit('parse', 82, 'Parse nmap-os-db...');
+        for await (const os of parseNmapOsDb(osPath)) {
+            batch.push({
+                port: 0, protocol: 'tcp', service_name: os.name,
+                version_pattern: os.version || null, banner_pattern: null,
+                os_family: os.osFamily, os_version: os.osVersion,
+                cpe: os.cpe || null, description: `OS: ${os.name}`,
+                confidence: os.confidence || 70,
+                source: 'nmap-os-db'
+            });
+            if (batch.length >= BATCH) { insertBatch(batch); batch = []; }
         }
-        emit('import', 88, `+ nmap-os-db: ${osFingerprints.length} OS-Fingerprints`);
+        if (batch.length > 0) { insertBatch(batch); batch = []; }
+        emit('import', 88, `+ nmap-os-db importiert`);
 
-        let probeMatches = [];
-        for (const probe of serviceProbes) {
-            for (const match of probe.matches) probeMatches.push(match);
+        // 3. Process nmap-service-probes
+        emit('parse', 90, 'Parse nmap-service-probes...');
+        for await (const probe of parseNmapServiceProbes(probePath)) {
+            for (const m of probe.matches) {
+                batch.push({
+                    port: m.port || 0, protocol: 'tcp', service_name: m.service,
+                    version_pattern: m.versionPattern || null, banner_pattern: m.pattern || null,
+                    os_family: m.osFamily || null, os_version: null,
+                    cpe: m.cpe || null, description: m.info || `${m.service} probe`,
+                    confidence: m.confidence || 75,
+                    source: 'nmap-service-probes'
+                });
+                if (batch.length >= BATCH) { insertBatch(batch); batch = []; }
+            }
         }
-        for (let i = 0; i < probeMatches.length; i += BATCH) {
-            database.transaction((items) => {
-                for (const m of items) {
-                    insertStmt.run(m.port || 0, 'tcp', m.service, m.versionPattern || null, m.pattern || null, m.osFamily || null, null, m.cpe || null, m.info || `${m.service} probe`, m.confidence || 75, 'nmap-service-probes');
-                    added++;
-                }
-            })(probeMatches.slice(i, i + BATCH));
-        }
+        if (batch.length > 0) { insertBatch(batch); batch = []; }
 
         const countAfter = database.prepare('SELECT COUNT(*) as c FROM fingerprints').get().c;
         database.prepare(`
@@ -435,8 +449,7 @@ async function syncFingerprints(userId) {
         `).run(added, countAfter, logId);
 
         emit('done', 100, `Fertig! ${added} Fingerprints importiert. Gesamt: ${countAfter}`, {
-            before: countBefore, added, after: countAfter,
-            sources: { services: services.length, os: osFingerprints.length, probes: probeMatches.length }
+            before: countBefore, added, after: countAfter
         });
     } catch (err) {
         database.prepare(`UPDATE db_update_log SET status = 'error', error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(err.message, logId);
@@ -481,9 +494,8 @@ async function syncExploits(userId) {
         if (!fs.existsSync(csvPath)) throw new Error('files_exploits.csv nicht gefunden');
 
         emit('parse', 35, 'Parse files_exploits.csv...');
-        const csvData = fs.readFileSync(csvPath, 'utf8');
-        const lines = csvData.split('\n');
-        emit('parse', 40, `${lines.length} Zeilen gefunden. Importiere...`);
+        const fileStream = fs.createReadStream(csvPath);
+        const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
         database.prepare("DELETE FROM exploits WHERE source = 'exploit-db'").run();
 
@@ -494,16 +506,18 @@ async function syncExploits(userId) {
             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, 'exploit-db', ?, ?, ?)
         `);
 
-        let added = 0, errors = 0;
+        let added = 0, errors = 0, processedLines = 0;
         const BATCH = 1000;
         let batch = [];
 
-        for (let i = 1; i < lines.length; i++) {
-            const line = lines[i].trim();
-            if (!line) continue;
+        for await (const line of rl) {
+            processedLines++;
+            if (processedLines === 1) continue; // Skip header
+            const trimmedLine = line.trim();
+            if (!trimmedLine) continue;
 
             try {
-                const fields = parseCSVLine(line);
+                const fields = parseCSVLine(trimmedLine);
                 if (fields.length < 9) continue;
 
                 const edbId = fields[0]?.trim();
@@ -553,8 +567,8 @@ async function syncExploits(userId) {
                     }
                 })(batch);
                 batch = [];
-                const pct = 40 + Math.round((i / lines.length) * 45);
-                emit('import', pct, `Importiert: ${added} / ${i} (${errors} Fehler)`);
+                const pct = Math.min(85, 40 + Math.round((processedLines / 50000) * 45));
+                emit('import', pct, `Importiert: ${added} / ${processedLines} (${errors} Fehler)`);
             }
         }
 
@@ -570,14 +584,17 @@ async function syncExploits(userId) {
         const scPath = path.join(EXPLOITDB_DIR, 'files_shellcodes.csv');
         if (fs.existsSync(scPath)) {
             emit('import', 90, 'Importiere Shellcodes...');
-            const scData = fs.readFileSync(scPath, 'utf8');
-            const scLines = scData.split('\n');
+            const scFileStream = fs.createReadStream(scPath);
+            const scRl = readline.createInterface({ input: scFileStream, crlfDelay: Infinity });
             let scBatch = [];
-            for (let i = 1; i < scLines.length; i++) {
-                const line = scLines[i].trim();
-                if (!line) continue;
+            let scProcessed = 0;
+            for await (const line of scRl) {
+                scProcessed++;
+                if (scProcessed === 1) continue; // Skip header
+                const trimmedLine = line.trim();
+                if (!trimmedLine) continue;
                 try {
-                    const f = parseCSVLine(line);
+                    const f = parseCSVLine(trimmedLine);
                     if (f.length < 5 || !f[0] || !f[2]) continue;
                     const codePath = f[1] ? path.join(EXPLOITDB_DIR, f[1].trim()) : null;
                     scBatch.push({ edbId: `SHELLCODE-${f[0].trim()}`, title: f[2].trim().substring(0, 500), platform: normPlatform(f[5]?.trim()), url: `https://www.exploit-db.com/shellcodes/${f[0].trim()}`, code: codePath && fs.existsSync(codePath) ? codePath : null });
@@ -610,18 +627,33 @@ async function syncExploits(userId) {
 // ============================================
 // HELPERS
 // ============================================
-function downloadToString(url) {
+function downloadToFile(url, destPath) {
     return new Promise((resolve, reject) => {
         const doReq = (u, redirects) => {
             if (redirects > 5) return reject(new Error('Too many redirects'));
             const proto = u.startsWith('https') ? https : http;
-            proto.get(u, { headers: { 'User-Agent': 'SecureScope/1.0' }, timeout: 30000 }, (res) => {
+            proto.get(u, { headers: { 'User-Agent': 'SecureScope/1.0' }, timeout: 60000 }, (res) => {
                 if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) return doReq(res.headers.location, redirects + 1);
                 if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
-                const chunks = [];
-                res.on('data', c => chunks.push(c));
-                res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-                res.on('error', reject);
+
+                const fileStream = fs.createWriteStream(destPath);
+                res.pipe(fileStream);
+
+                fileStream.on('finish', () => {
+                    fileStream.close();
+                    resolve(destPath);
+                });
+
+                fileStream.on('error', (err) => {
+                    fs.unlink(destPath, () => {});
+                    reject(err);
+                });
+
+                res.on('error', (err) => {
+                    fileStream.destroy();
+                    fs.unlink(destPath, () => {});
+                    reject(err);
+                });
             }).on('error', reject);
         };
         doReq(url, 0);
@@ -657,9 +689,11 @@ function extractService(title) {
     return null;
 }
 
-function parseNmapServices(data) {
-    const results = [];
-    for (const line of data.split('\n')) {
+async function* parseNmapServices(filePath) {
+    const fileStream = fs.createReadStream(filePath);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
         if (line.startsWith('#') || !line.trim()) continue;
         const parts = line.split('\t');
         if (parts.length < 3) continue;
@@ -671,16 +705,18 @@ function parseNmapServices(data) {
         const freq = parseFloat(parts[2]) || 0;
         if (freq < 0.00005 && port > 1024) continue;
         if (port > 65535 || port < 0) continue;
-        results.push({ name, port, protocol, frequency: freq, description: parts[3]?.replace(/^#\s*/, '').trim() || name });
+        yield { name, port, protocol, frequency: freq, description: parts[3]?.replace(/^#\s*/, '').trim() || name };
     }
-    return results;
 }
 
-function parseNmapOsDb(data) {
-    const results = []; let cur = null;
-    for (const line of data.split('\n')) {
+async function* parseNmapOsDb(filePath) {
+    let cur = null;
+    const fileStream = fs.createReadStream(filePath);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
         if (line.startsWith('Fingerprint ')) {
-            if (cur) results.push(cur);
+            if (cur) yield cur;
             cur = { name: line.substring(12).trim(), osFamily: null, osVersion: null, cpe: null, confidence: 80, version: null };
         } else if (line.startsWith('Class ') && cur) {
             const parts = line.substring(6).trim().split('|').map(p => p.trim());
@@ -689,16 +725,18 @@ function parseNmapOsDb(data) {
             cur.cpe = cur.cpe ? cur.cpe + '; ' + line.substring(4).trim() : line.substring(4).trim();
         }
     }
-    if (cur) results.push(cur);
-    return results;
+    if (cur) yield cur;
 }
 
-function parseNmapServiceProbes(data) {
-    const results = []; let probe = null;
-    for (const line of data.split('\n')) {
+async function* parseNmapServiceProbes(filePath) {
+    let probe = null;
+    const fileStream = fs.createReadStream(filePath);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
+
+    for await (const line of rl) {
         if (line.startsWith('#') || !line.trim()) continue;
         if (line.startsWith('Probe ')) {
-            if (probe && probe.matches.length > 0) results.push(probe);
+            if (probe && probe.matches.length > 0) yield probe;
             const m = line.match(/^Probe\s+(TCP|UDP)\s+(\S+)/);
             probe = { protocol: m ? m[1].toLowerCase() : 'tcp', name: m ? m[2] : 'unknown', matches: [], ports: [] };
         } else if (line.startsWith('ports ') && probe) {
@@ -719,8 +757,7 @@ function parseNmapServiceProbes(data) {
             } catch {}
         }
     }
-    if (probe && probe.matches.length > 0) results.push(probe);
-    return results;
+    if (probe && probe.matches.length > 0) yield probe;
 }
 
 // ============================================
