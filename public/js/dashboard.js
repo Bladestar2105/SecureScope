@@ -133,7 +133,12 @@
             'users': 'Benutzerverwaltung', 'notifications': 'Benachrichtigungen',
             'scan-detail': 'Scan-Details'
         };
-        document.getElementById('viewTitle').textContent = titles[view] || 'SecureScope';
+        const titleEl = document.getElementById('viewTitle');
+        if (titleEl) {
+            titleEl.textContent = titles[view] || 'SecureScope';
+            titleEl.setAttribute('tabindex', '-1');
+            titleEl.focus();
+        }
 
         // Load data for views
         switch (view) {
