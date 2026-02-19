@@ -33,21 +33,14 @@ RUN apt-get update && apt-get install -y \
     nmap \
     && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user
-RUN groupadd -r securescope && useradd -r -g securescope securescope
-
 # Copy production dependencies from builder
-COPY --from=builder --chown=securescope:securescope /app/node_modules ./node_modules
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy application code
-COPY --chown=securescope:securescope . .
+COPY . .
 
-# Create necessary directories with correct permissions
-RUN mkdir -p database logs && \
-    chown -R securescope:securescope database logs
-
-# Switch to non-root user
-USER securescope
+# Create necessary directories
+RUN mkdir -p database logs
 
 # Set environment variables
 ENV NODE_ENV=production
