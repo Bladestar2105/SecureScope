@@ -51,7 +51,7 @@
     --border-light: #cbd5e1;
     --text-primary: #1e293b;
     --text-secondary: #475569;
-    --text-muted: #94a3b8;
+    --text-muted: #64748b;
     --accent-blue: #2563eb;
     --accent-blue-bg: rgba(37,99,235,.08);
     --accent-green: #16a34a;
@@ -342,11 +342,11 @@ textarea.form-control { resize: vertical; min-height: 80px; font-family: inherit
 code { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-size: .85em; }
 
 /* ===== Filter Bar ===== */
-.filter-bar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
-.filter-bar .form-group { margin-bottom: 0; flex: 1; min-width: 140px; }
-.filter-bar .form-group label { font-size: .7rem; margin-bottom: .2rem; }
-.filter-bar .form-control { padding: .4rem .65rem; font-size: .8rem; }
-.filter-bar .btn { align-self: flex-end; }
+.filters-bar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: flex-end; }
+.filters-bar .form-group { margin-bottom: 0; flex: 1; min-width: 140px; }
+.filters-bar .form-group label { font-size: .7rem; margin-bottom: .2rem; }
+.filters-bar .form-control { padding: .4rem .65rem; font-size: .8rem; }
+.filters-bar .btn { align-self: flex-end; }
 
 /* ===== DB Update Panel ===== */
 .db-update-panel {
@@ -453,8 +453,8 @@ code { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-siz
     .main-content { margin-left: 0 !important; }
     .stats-grid { grid-template-columns: 1fr 1fr; }
     .scan-config { grid-template-columns: 1fr; }
-    .filter-bar { flex-direction: column; }
-    .filter-bar .form-group { min-width: 100%; }
+    .filters-bar { flex-direction: column; }
+    .filters-bar .form-group { min-width: 100%; }
     .detail-grid { grid-template-columns: 1fr; }
     .form-grid { grid-template-columns: 1fr; }
     .chain-steps { flex-direction: column; align-items: flex-start; }
