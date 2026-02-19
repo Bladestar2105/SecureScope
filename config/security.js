@@ -61,9 +61,14 @@ const SESSION_SECRET = getSecret('SESSION_SECRET');
 const CSRF_SECRET = getSecret('CSRF_SECRET');
 const CREDENTIAL_SECRET = getSecret('CREDENTIAL_SECRET', SESSION_SECRET);
 
+const isCookieSecure = process.env.COOKIE_SECURE !== undefined
+    ? process.env.COOKIE_SECURE === 'true'
+    : isProduction;
+
 module.exports = {
     SESSION_SECRET,
     CSRF_SECRET,
     CREDENTIAL_SECRET,
-    isProduction
+    isProduction,
+    isCookieSecure
 };
