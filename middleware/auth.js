@@ -1,4 +1,23 @@
+const { doubleCsrf } = require("csrf-csrf");
 const logger = require('../services/logger');
+
+const {
+    doubleCsrfProtection,
+    generateCsrfToken: generateTokenInternal
+} = doubleCsrf({
+    getSecret: () => process.env.CSRF_SECRET || 'fallback-secret-change-me',
+    cookieName: "x-csrf-token",
+    cookieOptions: {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: process.env.NODE_ENV === 'production',
+        path: "/"
+    },
+    size: 64,
+    ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+    getTokenFromRequest: (req) => req.headers["x-csrf-token"] || req.body._csrf,
+    getSessionIdentifier: (req) => req.session.id // Bind token to session
+});
 
 // Authentication middleware - checks if user is logged in
 function requireAuth(req, res, next) {
@@ -46,40 +65,34 @@ function sessionTimeout(req, res, next) {
     next();
 }
 
-// CSRF token middleware
-function csrfProtection(req, res, next) {
-    // Skip CSRF for tests to avoid session/cookie issues in CI
-    if (process.env.NODE_ENV === 'test') {
-        return next();
-    }
-
-    // Skip CSRF for GET, HEAD, OPTIONS requests
-    const safeMethods = ['GET', 'HEAD', 'OPTIONS'];
-    if (safeMethods.includes(req.method)) {
-        return next();
-    }
-
-    // Skip CSRF for login (no session yet)
-    if (req.path === '/api/auth/login' || req.path === '/auth/login' || req.originalUrl === '/api/auth/login') {
-        return next();
-    }
-
-    const token = req.headers['x-csrf-token'] || req.body._csrf;
+// Wrapper for doubleCsrfProtection to handle errors uniformly
+const csrfProtection = (req, res, next) => {
+    // Skip CSRF for tests if needed, or mock it.
+    // However, tests might want to test CSRF too.
+    // The current tests expect CSRF token to be returned and used.
     
-    if (!token || token !== req.session.csrfToken) {
-        logger.warn(`CSRF token mismatch for ${req.path} from ${req.ip}`);
-        return res.status(403).json({ error: 'Ungültiges CSRF-Token' });
-    }
+    // For tests, allow bypassing if needed, but here we want to test it.
+    // However, integration tests might fail if they don't handle cookies correctly.
+    // The current tests seem to handle cookies via supertest agent.
 
-    next();
-}
+    // We can conditionally skip if NODE_ENV is test AND we want to skip it?
+    // But the tests seem to expect csrf protection to be active (they set X-CSRF-Token).
+
+    doubleCsrfProtection(req, res, (err) => {
+        if (err && err.code === 'EBADCSRFTOKEN') {
+            logger.warn(`CSRF token mismatch for ${req.path} from ${req.ip}`);
+            return res.status(403).json({ error: 'Ungültiges CSRF-Token' });
+        } else if (err) {
+            logger.error('CSRF error:', err);
+            return res.status(403).json({ error: 'CSRF Fehler' });
+        }
+        next();
+    });
+};
 
 // Generate CSRF token
-function generateCsrfToken(req) {
-    const crypto = require('crypto');
-    const token = crypto.randomBytes(32).toString('hex');
-    req.session.csrfToken = token;
-    return token;
+function generateCsrfToken(req, res) {
+    return generateTokenInternal(req, res);
 }
 
 module.exports = {

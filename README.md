@@ -51,6 +51,7 @@ SecureScope ist ein webbasiertes Netzwerk-Sicherheitsaudit-Tool, das Port-Scanni
 
 - **Node.js** >= 18.0.0
 - **npm** >= 9.0.0
+- **Nmap** (muss im System-PATH verfügbar sein)
 
 ### Installation
 
@@ -176,7 +177,8 @@ curl -X POST http://localhost:3000/api/scan/start \
 
 ```
 securescope/
-├── server.js                 # Hauptserver (Express.js)
+├── server.js                 # Server-Einstiegspunkt
+├── app.js                    # Express-Applikation
 ├── package.json              # Dependencies & Scripts
 ├── .env                      # Umgebungsvariablen
 ├── .env.example              # Beispiel-Konfiguration
@@ -184,6 +186,12 @@ securescope/
 ├── docker-compose.yml        # Docker Compose
 ├── config/
 │   └── database.js           # SQLite-Konfiguration & Init
+├── database/
+│   ├── securescope.db        # SQLite-Datenbank (auto-generiert)
+│   └── schema/               # SQL-Schema-Definitionen
+│       ├── 01_auth.sql
+│       ├── 02_core_scans.sql
+│       └── ...
 ├── middleware/
 │   ├── auth.js               # Auth, Session-Timeout, CSRF
 │   └── rateLimit.js          # Rate-Limiting
@@ -193,6 +201,8 @@ securescope/
 ├── services/
 │   ├── logger.js             # Winston Logger mit Rotation
 │   ├── scanner.js            # Port-Scan-Engine (nmap)
+│   ├── nmapParser.js         # Nmap XML Parser
+│   ├── cveService.js         # CVE Matching Logic
 │   └── userService.js        # Benutzerverwaltung
 ├── public/
 │   ├── index.html            # Login-Seite
@@ -202,8 +212,6 @@ securescope/
 │   └── js/
 │       ├── login.js          # Login-Logik
 │       └── dashboard.js      # Dashboard-Logik
-├── database/
-│   └── securescope.db        # SQLite-Datenbank (auto-generiert)
 ├── logs/                     # Log-Dateien (auto-generiert)
 └── tests/
     └── auth.test.js          # Grundlegende Tests

@@ -36,7 +36,7 @@ router.post('/login', loginLimiter, async (req, res) => {
         req.session.lastActivity = Date.now();
 
         // Generate CSRF token
-        const csrfToken = generateCsrfToken(req);
+        const csrfToken = generateCsrfToken(req, res);
 
         UserService.logAudit(user.id, 'LOGIN_SUCCESS', {}, req.ip);
 
@@ -83,8 +83,8 @@ router.get('/status', (req, res) => {
             return res.json({ authenticated: false });
         }
 
-        // Regenerate CSRF token only if not exists
-        const csrfToken = req.session.csrfToken || generateCsrfToken(req);
+        // Regenerate CSRF token
+        const csrfToken = generateCsrfToken(req, res);
 
         return res.json({
             authenticated: true,
@@ -96,7 +96,14 @@ router.get('/status', (req, res) => {
             csrfToken
         });
     }
-    res.json({ authenticated: false });
+    // Still generate token for unauthenticated users (for login form)
+    // Force session to be saved so that session ID persists (required for CSRF binding)
+    if (!req.session.userId) {
+        req.session.anonymous = true;
+    }
+
+    const csrfToken = generateCsrfToken(req, res);
+    res.json({ authenticated: false, csrfToken });
 });
 
 // POST /api/auth/change-password
