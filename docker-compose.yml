@@ -1,8 +1,6 @@
 services:
   securescope:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/bladestar2105/securescope:latest
     container_name: securescope
     restart: unless-stopped
     ports:
