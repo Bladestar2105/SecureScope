@@ -203,8 +203,9 @@ class ScannerService extends EventEmitter {
             if (idx !== -1) args[idx] = '600s';
         }
 
-        // Add OS detection for standard and full scans
-        if (scanType === 'standard' || scanType === 'full') {
+        // Add OS detection for standard and full scans (requires root)
+        const isRoot = process.getuid && process.getuid() === 0;
+        if ((scanType === 'standard' || scanType === 'full') && isRoot) {
             args.push('-O', '--osscan-guess');
         }
 
