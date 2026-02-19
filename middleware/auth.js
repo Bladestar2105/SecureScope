@@ -1,11 +1,12 @@
 const { doubleCsrf } = require("csrf-csrf");
 const logger = require('../services/logger');
+const { CSRF_SECRET } = require('../config/security');
 
 const {
     doubleCsrfProtection,
     generateCsrfToken: generateTokenInternal
 } = doubleCsrf({
-    getSecret: () => process.env.CSRF_SECRET || 'fallback-secret-change-me',
+    getSecret: () => CSRF_SECRET,
     cookieName: "x-csrf-token",
     cookieOptions: {
         httpOnly: true,
