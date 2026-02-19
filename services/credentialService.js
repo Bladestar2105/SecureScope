@@ -1,10 +1,11 @@
 const { getDatabase } = require('../config/database');
 const crypto = require('crypto');
 const logger = require('./logger');
+const { CREDENTIAL_SECRET } = require('../config/security');
 
 // Encryption key derived from environment or fallback
 const ENCRYPTION_KEY = crypto.scryptSync(
-    process.env.CREDENTIAL_SECRET || process.env.SESSION_SECRET || 'securescope-credential-key-change-me',
+    CREDENTIAL_SECRET,
     'securescope-salt-v1', 32
 );
 const IV_LENGTH = 16;

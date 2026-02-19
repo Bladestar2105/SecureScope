@@ -9,6 +9,7 @@ const compression = require('compression');
 const path = require('path');
 const { sessionTimeout, csrfProtection } = require('./middleware/auth');
 const { apiLimiter } = require('./middleware/rateLimit');
+const { SESSION_SECRET } = require('./config/security');
 const logger = require('./services/logger');
 
 // Route imports
@@ -60,12 +61,12 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Cookie parser
-app.use(cookieParser(process.env.SESSION_SECRET || 'fallback-secret-change-me'));
+app.use(cookieParser(SESSION_SECRET));
 
 // Session configuration
 app.use(session({
     name: 'securescope.sid',
-    secret: process.env.SESSION_SECRET || 'fallback-secret-change-me',
+    secret: SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
     cookie: {
