@@ -13,6 +13,11 @@ let server;
 let agent;
 let csrfToken;
 
+async function getCsrfToken(agent) {
+    const res = await agent.get('/api/auth/status');
+    return res.body.csrfToken;
+}
+
 beforeAll(async () => {
     // Mock _executeScan to avoid running nmap
     jest.spyOn(scannerService, '_executeScan').mockImplementation(async () => {
@@ -32,8 +37,10 @@ beforeAll(async () => {
     agent = request.agent(server);
 
     // Login
+    const initialToken = await getCsrfToken(agent);
     const loginRes = await agent
         .post('/api/auth/login')
+        .set('X-CSRF-Token', initialToken)
         .send({ username: 'admin', password: 'admin' });
 
     csrfToken = loginRes.body.csrfToken;
