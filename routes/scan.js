@@ -40,24 +40,16 @@ router.get('/dashboard', (req, res) => {
         const activeScansCount = scannerService.getActiveScanCount();
         const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
 
-        // Recent scans with result counts
+        // Recent scans with result counts (Optimized: single query with subqueries)
         const recentScans = db.prepare(`
-            SELECT s.*, COUNT(sr.id) as result_count
+            SELECT
+                s.*,
+                (SELECT COUNT(*) FROM scan_results WHERE scan_id = s.id) as result_count,
+                (SELECT COUNT(*) FROM scan_vulnerabilities WHERE scan_id = s.id) as vuln_count
             FROM scans s
-            LEFT JOIN scan_results sr ON s.id = sr.scan_id
             WHERE s.user_id = ?
-            GROUP BY s.id
             ORDER BY s.started_at DESC LIMIT 10
         `).all(userId);
-
-        // Add vuln_count to recent scans
-        for (const scan of recentScans) {
-            try {
-                scan.vuln_count = db.prepare('SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ?').get(scan.id).c;
-            } catch (e) {
-                scan.vuln_count = 0;
-            }
-        }
 
         res.json({
             totalScans,
