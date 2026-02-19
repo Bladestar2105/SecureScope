@@ -3,6 +3,8 @@ const { getDatabase } = require('../config/database');
 const logger = require('./logger');
 const ExploitService = require('./exploitService');
 const emailService = require('./emailService');
+const NmapParser = require('./nmapParser');
+const CVEService = require('./cveService');
 const { EventEmitter } = require('events');
 const IPCIDR_MODULE = require('ip-cidr');
 const IPCIDR = IPCIDR_MODULE.default || IPCIDR_MODULE;
@@ -13,37 +15,6 @@ class ScannerService extends EventEmitter {
         this.activeScans = new Map(); // scanId -> { process, aborted }
         this.MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_SCANS) || 3;
         this.SCAN_TIMEOUT = parseInt(process.env.SCAN_TIMEOUT) || 600000; // 10 min default
-    }
-
-    // Known critical ports and their risk levels
-    static get CRITICAL_PORTS() {
-        return {
-            21: { service: 'FTP', risk: 'critical', description: 'File Transfer Protocol - oft unverschlüsselt' },
-            22: { service: 'SSH', risk: 'safe', description: 'Secure Shell' },
-            23: { service: 'Telnet', risk: 'critical', description: 'Telnet - unverschlüsselte Verbindung' },
-            25: { service: 'SMTP', risk: 'warning', description: 'Simple Mail Transfer Protocol' },
-            53: { service: 'DNS', risk: 'safe', description: 'Domain Name System' },
-            80: { service: 'HTTP', risk: 'warning', description: 'Unverschlüsselter Webserver' },
-            110: { service: 'POP3', risk: 'warning', description: 'Post Office Protocol - oft unverschlüsselt' },
-            111: { service: 'RPCBind', risk: 'critical', description: 'RPC Portmapper - Sicherheitsrisiko' },
-            135: { service: 'MSRPC', risk: 'critical', description: 'Microsoft RPC - häufiges Angriffsziel' },
-            139: { service: 'NetBIOS', risk: 'critical', description: 'NetBIOS Session Service' },
-            143: { service: 'IMAP', risk: 'warning', description: 'Internet Message Access Protocol' },
-            443: { service: 'HTTPS', risk: 'safe', description: 'Verschlüsselter Webserver' },
-            445: { service: 'SMB', risk: 'critical', description: 'Server Message Block - häufiges Angriffsziel' },
-            993: { service: 'IMAPS', risk: 'safe', description: 'IMAP über SSL' },
-            995: { service: 'POP3S', risk: 'safe', description: 'POP3 über SSL' },
-            1433: { service: 'MSSQL', risk: 'critical', description: 'Microsoft SQL Server' },
-            1521: { service: 'Oracle', risk: 'critical', description: 'Oracle Database' },
-            3306: { service: 'MySQL', risk: 'critical', description: 'MySQL Database' },
-            3389: { service: 'RDP', risk: 'critical', description: 'Remote Desktop Protocol' },
-            5432: { service: 'PostgreSQL', risk: 'critical', description: 'PostgreSQL Database' },
-            5900: { service: 'VNC', risk: 'critical', description: 'Virtual Network Computing' },
-            6379: { service: 'Redis', risk: 'critical', description: 'Redis Database' },
-            8080: { service: 'HTTP-Alt', risk: 'warning', description: 'Alternativer HTTP Port' },
-            8443: { service: 'HTTPS-Alt', risk: 'warning', description: 'Alternativer HTTPS Port' },
-            27017: { service: 'MongoDB', risk: 'critical', description: 'MongoDB Database' }
-        };
     }
 
     // Top 100 ports for quick scan
@@ -130,27 +101,6 @@ class ScannerService extends EventEmitter {
         }
     }
 
-    // Get risk level for a port based on service info
-    static getRiskLevel(port, state, serviceName) {
-        if (state !== 'open') return 'info';
-        const portInfo = ScannerService.CRITICAL_PORTS[port];
-        if (portInfo) return portInfo.risk;
-
-        // Additional risk assessment based on service name
-        const svcLower = (serviceName || '').toLowerCase();
-        if (['telnet', 'ftp', 'rlogin', 'rsh'].includes(svcLower)) return 'critical';
-        if (['http', 'smtp', 'pop3', 'imap'].includes(svcLower)) return 'warning';
-        if (['https', 'ssh', 'imaps', 'pop3s', 'smtps'].includes(svcLower)) return 'safe';
-
-        return 'warning';
-    }
-
-    // Get service name for a port (fallback if nmap doesn't detect)
-    static getServiceName(port) {
-        const portInfo = ScannerService.CRITICAL_PORTS[port];
-        return portInfo ? portInfo.service : 'unknown';
-    }
-
     // Get active scan count
     getActiveScanCount() {
         return this.activeScans.size;
@@ -164,130 +114,6 @@ class ScannerService extends EventEmitter {
         } catch {
             return [];
         }
-    }
-
-    // ============================================
-    // NMAP XML PARSER
-    // ============================================
-
-    /**
-     * Parse Nmap XML output into structured results
-     */
-    static parseNmapXML(xmlData) {
-        const results = [];
-
-        // Parse each host block
-        const hostRegex = /<host\b[^>]*>([\s\S]*?)<\/host>/g;
-        let hostMatch;
-
-        while ((hostMatch = hostRegex.exec(xmlData)) !== null) {
-            const hostBlock = hostMatch[1];
-
-            // Extract IP address
-            const addrMatch = hostBlock.match(/<address\s+addr="([^"]+)"\s+addrtype="ipv4"/);
-            if (!addrMatch) continue;
-            const ip = addrMatch[1];
-
-            // Check host status
-            const statusMatch = hostBlock.match(/<status\s+state="([^"]+)"/);
-            if (statusMatch && statusMatch[1] !== 'up') continue;
-
-            // Extract OS detection info
-            let osName = null;
-            let osAccuracy = 0;
-            const osMatchRegex = /<osmatch\s+name="([^"]+)"[^>]*accuracy="(\d+)"/g;
-            let osMatch;
-            while ((osMatch = osMatchRegex.exec(hostBlock)) !== null) {
-                const acc = parseInt(osMatch[2]);
-                if (acc > osAccuracy) {
-                    osName = osMatch[1];
-                    osAccuracy = acc;
-                }
-            }
-
-            // Extract ports
-            const portRegex = /<port\s+protocol="([^"]+)"\s+portid="(\d+)">([\s\S]*?)<\/port>/g;
-            let portMatch;
-
-            while ((portMatch = portRegex.exec(hostBlock)) !== null) {
-                const protocol = portMatch[1];
-                const port = parseInt(portMatch[2]);
-                const portBlock = portMatch[3];
-
-                // Get port state
-                const stateMatch = portBlock.match(/<state\s+state="([^"]+)"/);
-                if (!stateMatch) continue;
-                const state = stateMatch[1];
-
-                if (state !== 'open') continue;
-
-                // Extract service info from Nmap's service detection
-                let serviceName = '';
-                let serviceProduct = '';
-                let serviceVersion = '';
-                let serviceExtraInfo = '';
-                let serviceCPE = '';
-                let tunnel = '';
-
-                const serviceMatch = portBlock.match(/<service\s+([^>]*?)\/?>(?:<\/service>)?/);
-                if (serviceMatch) {
-                    const attrs = serviceMatch[1];
-
-                    const nameM = attrs.match(/name="([^"]+)"/);
-                    if (nameM) serviceName = nameM[1];
-
-                    const productM = attrs.match(/product="([^"]+)"/);
-                    if (productM) serviceProduct = productM[1];
-
-                    const versionM = attrs.match(/version="([^"]+)"/);
-                    if (versionM) serviceVersion = versionM[1];
-
-                    const extraM = attrs.match(/extrainfo="([^"]+)"/);
-                    if (extraM) serviceExtraInfo = extraM[1];
-
-                    const tunnelM = attrs.match(/tunnel="([^"]+)"/);
-                    if (tunnelM) tunnel = tunnelM[1];
-                }
-
-                // Extract CPE(s)
-                const cpeMatches = portBlock.match(/<cpe>([^<]+)<\/cpe>/g);
-                if (cpeMatches && cpeMatches.length > 0) {
-                    serviceCPE = cpeMatches.map(c => c.replace(/<\/?cpe>/g, '')).join(',');
-                }
-
-                // Build display service name
-                let displayService = serviceName || ScannerService.getServiceName(port);
-                if (tunnel === 'ssl') displayService = `${displayService}/ssl`;
-
-                // Build banner string (human-readable summary)
-                let banner = '';
-                if (serviceProduct) {
-                    banner = serviceProduct;
-                    if (serviceVersion) banner += '/' + serviceVersion;
-                    if (serviceExtraInfo) banner += ' ' + serviceExtraInfo;
-                }
-
-                const riskLevel = ScannerService.getRiskLevel(port, state, serviceName);
-
-                results.push({
-                    ip,
-                    port,
-                    protocol,
-                    state,
-                    service: displayService,
-                    service_product: serviceProduct || null,
-                    service_version: serviceVersion || null,
-                    service_extra: serviceExtraInfo || null,
-                    service_cpe: serviceCPE || null,
-                    banner: banner || null,
-                    os_name: osName,
-                    os_accuracy: osAccuracy,
-                    riskLevel
-                });
-            }
-        }
-
-        return results;
     }
 
     // ============================================
@@ -424,89 +250,11 @@ class ScannerService extends EventEmitter {
             this.emit('scanProgress', { scanId, progress: 60, phase: 'parsing', message: 'Ergebnisse werden verarbeitet...' });
 
             // Parse Nmap XML output
-            const results = ScannerService.parseNmapXML(nmapResult);
+            const results = NmapParser.parseXML(nmapResult);
             logger.info(`Scan ${scanId}: Nmap found ${results.length} open ports with service info`);
 
-            // Save results to database
-            if (results.length > 0) {
-                const insertStmt = db.prepare(`
-                    INSERT INTO scan_results (scan_id, ip_address, port, protocol, service, state, risk_level,
-                        service_product, service_version, service_extra, service_cpe, banner, os_name, os_accuracy)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `);
-
-                const insertMany = db.transaction((items) => {
-                    for (const item of items) {
-                        insertStmt.run(
-                            scanId, item.ip, item.port, item.protocol,
-                            item.service, item.state, item.riskLevel,
-                            item.service_product, item.service_version,
-                            item.service_extra, item.service_cpe,
-                            item.banner, item.os_name, item.os_accuracy
-                        );
-                    }
-                });
-                insertMany(results);
-            }
-
-            // Update progress - analysis phase
-            db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(80, scanId);
-            this.emit('scanProgress', { scanId, progress: 80, phase: 'analysis', message: 'Sicherheitsanalyse (CVE + Exploit Matching)...' });
-
-            // Post-scan analysis pipeline
-            let exploitMatches = [];
-            let cveMatches = [];
-
-            if (results.length > 0) {
-                // Match against CVE database using detected service versions
-                try {
-                    cveMatches = this._matchCVEs(scanId);
-                    logger.info(`Scan ${scanId}: ${cveMatches.length} CVE matches found`);
-                } catch (cveErr) {
-                    logger.error(`CVE matching failed for scan ${scanId}:`, cveErr);
-                }
-
-                // Match against exploit database
-                try {
-                    exploitMatches = ExploitService.matchScanResults(scanId);
-                    logger.info(`Scan ${scanId}: ${exploitMatches.length} exploit matches found`);
-                } catch (exploitErr) {
-                    logger.error(`Exploit matching failed for scan ${scanId}:`, exploitErr);
-                }
-            }
-
-            // Mark scan as completed
-            db.prepare(
-                'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).run('completed', scanId);
-
-            const exploitSummary = ExploitService.getScanExploitSummary(scanId);
-
-            this.emit('scanComplete', {
-                scanId, status: 'completed', resultCount: results.length,
-                cveMatches: cveMatches.length,
-                exploits: exploitSummary
-            });
-
-            logger.info(`Scan ${scanId} completed: ${results.length} open ports, ${cveMatches.length} CVEs, ${exploitMatches.length} exploits`);
-            logger.audit('SCAN_COMPLETED', {
-                scanId, status: 'completed', resultCount: results.length,
-                cveCount: cveMatches.length, exploitCount: exploitMatches.length
-            });
-
-            // Send email notifications
-            try {
-                const scan = this.getScanStatus(scanId);
-                const critCount = cveMatches.filter(c => c.severity === 'critical').length;
-                await emailService.notifyScanComplete(scan.user_id, scan, results.length, { critical: critCount });
-
-                if (critCount > 0) {
-                    const criticalCVEs = cveMatches.filter(c => c.severity === 'critical');
-                    await emailService.notifyCriticalFound(scan.user_id, scan, criticalCVEs);
-                }
-            } catch (emailErr) {
-                logger.error(`Email notification failed for scan ${scanId}:`, emailErr);
-            }
+            // Process results
+            await this._processResults(scanId, results, db);
 
         } catch (err) {
             logger.error(`Scan ${scanId} failed:`, err);
@@ -517,6 +265,90 @@ class ScannerService extends EventEmitter {
         } finally {
             clearTimeout(timeoutHandle);
             this.activeScans.delete(scanId);
+        }
+    }
+
+    // Common result processing for both scan methods
+    async _processResults(scanId, results, db) {
+        // Save results to database
+        if (results.length > 0) {
+            const insertStmt = db.prepare(`
+                INSERT INTO scan_results (scan_id, ip_address, port, protocol, service, state, risk_level,
+                    service_product, service_version, service_extra, service_cpe, banner, os_name, os_accuracy)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+
+            const insertMany = db.transaction((items) => {
+                for (const item of items) {
+                    insertStmt.run(
+                        scanId, item.ip, item.port, item.protocol,
+                        item.service, item.state, item.riskLevel,
+                        item.service_product, item.service_version,
+                        item.service_extra, item.service_cpe,
+                        item.banner, item.os_name, item.os_accuracy
+                    );
+                }
+            });
+            insertMany(results);
+        }
+
+        // Update progress - analysis phase
+        db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(80, scanId);
+        this.emit('scanProgress', { scanId, progress: 80, phase: 'analysis', message: 'Sicherheitsanalyse (CVE + Exploit Matching)...' });
+
+        // Post-scan analysis pipeline
+        let exploitMatches = [];
+        let cveMatches = [];
+
+        if (results.length > 0) {
+            // Match against CVE database using detected service versions
+            try {
+                cveMatches = CVEService.matchCVEs(scanId);
+                logger.info(`Scan ${scanId}: ${cveMatches.length} CVE matches found`);
+            } catch (cveErr) {
+                logger.error(`CVE matching failed for scan ${scanId}:`, cveErr);
+            }
+
+            // Match against exploit database
+            try {
+                exploitMatches = ExploitService.matchScanResults(scanId);
+                logger.info(`Scan ${scanId}: ${exploitMatches.length} exploit matches found`);
+            } catch (exploitErr) {
+                logger.error(`Exploit matching failed for scan ${scanId}:`, exploitErr);
+            }
+        }
+
+        // Mark scan as completed
+        db.prepare(
+            'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run('completed', scanId);
+
+        const exploitSummary = ExploitService.getScanExploitSummary(scanId);
+
+        this.emit('scanComplete', {
+            scanId, status: 'completed', resultCount: results.length,
+            cveMatches: cveMatches.length,
+            exploits: exploitSummary
+        });
+
+        logger.info(`Scan ${scanId} completed: ${results.length} open ports, ${cveMatches.length} CVEs, ${exploitMatches.length} exploits`);
+        logger.audit('SCAN_COMPLETED', {
+            scanId, status: 'completed', resultCount: results.length,
+            cveCount: cveMatches.length, exploitCount: exploitMatches.length
+        });
+
+        // Send email notifications
+        try {
+            const scan = this.getScanStatus(scanId);
+            const critCount = cveMatches.filter(c => c.severity === 'critical').length;
+            await emailService.notifyScanComplete(scan.user_id, scan, results.length, { critical: critCount });
+
+            if (critCount > 0) {
+                const criticalCVEs = cveMatches.filter(c => c.severity === 'critical');
+                await emailService.notifyCriticalFound(scan.user_id, scan, criticalCVEs);
+            }
+        } catch (emailErr) {
+            logger.error(`Email notification failed for scan ${scanId}:`, emailErr);
         }
     }
 
@@ -585,195 +417,55 @@ class ScannerService extends EventEmitter {
     // CVE MATCHING (using real service versions from Nmap)
     // ============================================
 
-    /**
-     * Match scan results against CVE database using detected service versions
-     */
-    _matchCVEs(scanId) {
-        const db = getDatabase();
-        const matches = [];
-
-        // Check if cve_entries table exists and has data
-        let cveCount = 0;
-        try {
-            cveCount = db.prepare('SELECT COUNT(*) as c FROM cve_entries').get().c;
-        } catch (e) {
-            logger.warn('CVE table not available for matching');
-            return matches;
-        }
-
-        if (cveCount === 0) {
-            logger.info('No CVEs in database, skipping CVE matching');
-            return matches;
-        }
-
-        // Ensure scan_vulnerabilities table exists
-        db.exec(`
-            CREATE TABLE IF NOT EXISTS scan_vulnerabilities (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                scan_id INTEGER NOT NULL,
-                scan_result_id INTEGER NOT NULL,
-                cve_id TEXT NOT NULL,
-                title TEXT,
-                severity TEXT,
-                cvss_score REAL,
-                matched_service TEXT,
-                matched_version TEXT,
-                match_confidence INTEGER DEFAULT 0,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
-                FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
-                UNIQUE(scan_id, scan_result_id, cve_id)
-            )
-        `);
-
-        // Prepare insert statement
-        const insertStmt = db.prepare(`
-            INSERT OR IGNORE INTO scan_vulnerabilities
-            (scan_id, scan_result_id, cve_id, title, severity, cvss_score, matched_service, matched_version, match_confidence)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `);
-
-        // Get scan results with service info
-        const scanResults = db.prepare(`
-            SELECT id, port, service, service_product, service_version, service_cpe, banner
-            FROM scan_results WHERE scan_id = ? AND state = 'open'
-        `).all(scanId);
-
-        const insertItems = [];
-        const seenCVEs = new Set(); // Avoid duplicates per scan_result
-
-        for (const result of scanResults) {
-            const resultKey = result.id;
-
-            // Strategy 1: Match by CPE (most accurate, confidence 90)
-            if (result.service_cpe) {
-                const cpes = result.service_cpe.split(',');
-                for (const cpe of cpes) {
-                    // Extract vendor:product from CPE (e.g. cpe:/a:apache:http_server -> apache:http_server)
-                    const cpeParts = cpe.trim().split(':');
-                    let searchTerm = '';
-                    if (cpeParts.length >= 4) {
-                        searchTerm = cpeParts.slice(2, 5).join(':'); // vendor:product:version
-                    } else if (cpeParts.length >= 3) {
-                        searchTerm = cpeParts.slice(2, 4).join(':'); // vendor:product
-                    }
-
-                    if (!searchTerm || searchTerm.length < 3) continue;
-
-                    try {
-                        const cveResults = db.prepare(`
-                            SELECT cve_id, title, severity, cvss_score
-                            FROM cve_entries
-                            WHERE affected_products LIKE ? AND state = 'PUBLISHED'
-                            ORDER BY cvss_score DESC LIMIT 30
-                        `).all(`%${searchTerm}%`);
-
-                        for (const cve of cveResults) {
-                            const key = `${resultKey}:${cve.cve_id}`;
-                            if (seenCVEs.has(key)) continue;
-                            seenCVEs.add(key);
-
-                            insertItems.push({
-                                scan_id: scanId, scan_result_id: result.id,
-                                cve_id: cve.cve_id, title: cve.title,
-                                severity: cve.severity, cvss_score: cve.cvss_score,
-                                matched_service: result.service_product || result.service,
-                                matched_version: result.service_version || '',
-                                match_confidence: 90
-                            });
-                            matches.push({ ...cve, confidence: 90, matched_by: 'cpe' });
-                        }
-                    } catch (e) {
-                        logger.warn(`CPE matching error for ${searchTerm}:`, e.message);
-                    }
-                }
-            }
-
-            // Strategy 2: Match by product name (confidence 60)
-            if (result.service_product) {
-                const product = result.service_product.trim();
-                if (product.length < 3) continue;
-
-                try {
-                    const productResults = db.prepare(`
-                        SELECT cve_id, title, severity, cvss_score
-                        FROM cve_entries
-                        WHERE (affected_products LIKE ? OR title LIKE ?) AND state = 'PUBLISHED'
-                        ORDER BY cvss_score DESC LIMIT 20
-                    `).all(`%${product}%`, `%${product}%`);
-
-                    for (const cve of productResults) {
-                        const key = `${resultKey}:${cve.cve_id}`;
-                        if (seenCVEs.has(key)) continue;
-                        seenCVEs.add(key);
-
-                        insertItems.push({
-                            scan_id: scanId, scan_result_id: result.id,
-                            cve_id: cve.cve_id, title: cve.title,
-                            severity: cve.severity, cvss_score: cve.cvss_score,
-                            matched_service: product,
-                            matched_version: result.service_version || '',
-                            match_confidence: 60
-                        });
-                        matches.push({ ...cve, confidence: 60, matched_by: 'product' });
-                    }
-                } catch (e) {
-                    logger.warn(`Product matching error for ${product}:`, e.message);
-                }
-            }
-        }
-
-        // Batch insert all matches
-        if (insertItems.length > 0) {
-            try {
-                const insertAll = db.transaction((items) => {
-                    for (const item of items) {
-                        insertStmt.run(
-                            item.scan_id, item.scan_result_id, item.cve_id,
-                            item.title, item.severity, item.cvss_score,
-                            item.matched_service, item.matched_version, item.match_confidence
-                        );
-                    }
-                });
-                insertAll(insertItems);
-                logger.info(`Scan ${scanId}: Inserted ${insertItems.length} CVE matches`);
-            } catch (e) {
-                logger.error('Error inserting CVE matches:', e);
-            }
-        }
-
-        return matches;
-    }
-
-    // Get CVE matches for a scan
     getScanCVEs(scanId) {
-        const db = getDatabase();
-        try {
-            return db.prepare(`
-                SELECT sv.*, sr.port, sr.service, sr.service_product, sr.service_version, sr.ip_address
-                FROM scan_vulnerabilities sv
-                JOIN scan_results sr ON sv.scan_result_id = sr.id
-                WHERE sv.scan_id = ?
-                ORDER BY sv.cvss_score DESC
-            `).all(scanId);
-        } catch (e) {
-            return [];
-        }
+        return CVEService.getScanCVEs(scanId);
     }
 
-    // Get CVE summary for a scan
     getScanCVESummary(scanId) {
+        return CVEService.getScanCVESummary(scanId);
+    }
+
+    /**
+     * Get dashboard statistics for a user
+     */
+    getDashboardStats(userId) {
         const db = getDatabase();
-        try {
-            const total = db.prepare('SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ?').get(scanId).c;
-            const critical = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'critical'").get(scanId).c;
-            const high = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'high'").get(scanId).c;
-            const medium = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'medium'").get(scanId).c;
-            const low = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'low'").get(scanId).c;
-            return { total, critical, high, medium, low };
-        } catch (e) {
-            return { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
-        }
+
+        // Single query for counts
+        const stats = db.prepare(`
+            SELECT
+                (SELECT COUNT(*) FROM scans WHERE user_id = ?) as totalScans,
+                (SELECT COUNT(*) FROM scans WHERE user_id = ? AND status = 'completed') as completedScans,
+                (SELECT COUNT(*) FROM scan_results sr JOIN scans s ON sr.scan_id = s.id WHERE s.user_id = ? AND sr.risk_level = 'critical') as criticalPorts,
+                (SELECT COUNT(*) FROM scan_vulnerabilities sv JOIN scans s ON sv.scan_id = s.id WHERE s.user_id = ?) as totalVulnerabilities
+        `).get(userId, userId, userId, userId);
+
+        // Active scans
+        const activeScansCount = this.getActiveScanCount();
+        const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
+
+        // Recent scans with result counts and vuln counts
+        const recentScans = db.prepare(`
+            SELECT s.*,
+                   COUNT(DISTINCT sr.id) as result_count,
+                   COUNT(DISTINCT sv.id) as vuln_count
+            FROM scans s
+            LEFT JOIN scan_results sr ON s.id = sr.scan_id
+            LEFT JOIN scan_vulnerabilities sv ON s.id = sv.scan_id
+            WHERE s.user_id = ?
+            GROUP BY s.id
+            ORDER BY s.started_at DESC LIMIT 10
+        `).all(userId);
+
+        return {
+            totalScans: stats.totalScans,
+            completedScans: stats.completedScans,
+            criticalPorts: stats.criticalPorts,
+            totalVulnerabilities: stats.totalVulnerabilities || 0,
+            activeScans: activeScansCount,
+            activeScan: activeScanRow || null,
+            recentScans
+        };
     }
 
     // ============================================

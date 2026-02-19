@@ -100,6 +100,12 @@
     async function checkSession() {
         try {
             const data = await apiRequest('/api/auth/status');
+
+            // Store CSRF token even if not authenticated
+            if (data.csrfToken) {
+                csrfToken = data.csrfToken;
+            }
+
             if (data.authenticated) {
                 if (data.user.forcePasswordChange) {
                     csrfToken = data.csrfToken;

@@ -13,61 +13,8 @@ router.use(requireAuth);
 // GET /api/scan/dashboard - Dashboard stats
 router.get('/dashboard', (req, res) => {
     try {
-        const db = require('../config/database').getDatabase();
-        const userId = req.session.userId;
-
-        const totalScans = db.prepare('SELECT COUNT(*) as c FROM scans WHERE user_id = ?').get(userId).c;
-        const completedScans = db.prepare("SELECT COUNT(*) as c FROM scans WHERE user_id = ? AND status = 'completed'").get(userId).c;
-
-        // Count critical ports from all completed scans
-        const criticalPorts = db.prepare(`
-            SELECT COUNT(*) as c FROM scan_results sr
-            JOIN scans s ON sr.scan_id = s.id
-            WHERE s.user_id = ? AND sr.risk_level = 'critical'
-        `).get(userId).c;
-
-        // Count total CVE matches
-        let totalVulnerabilities = 0;
-        try {
-            totalVulnerabilities = db.prepare(`
-                SELECT COUNT(*) as c FROM scan_vulnerabilities sv
-                JOIN scans s ON sv.scan_id = s.id
-                WHERE s.user_id = ?
-            `).get(userId).c;
-        } catch (e) {}
-
-        // Active scans
-        const activeScansCount = scannerService.getActiveScanCount();
-        const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
-
-        // Recent scans with result counts
-        const recentScans = db.prepare(`
-            SELECT s.*, COUNT(sr.id) as result_count
-            FROM scans s
-            LEFT JOIN scan_results sr ON s.id = sr.scan_id
-            WHERE s.user_id = ?
-            GROUP BY s.id
-            ORDER BY s.started_at DESC LIMIT 10
-        `).all(userId);
-
-        // Add vuln_count to recent scans
-        for (const scan of recentScans) {
-            try {
-                scan.vuln_count = db.prepare('SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ?').get(scan.id).c;
-            } catch (e) {
-                scan.vuln_count = 0;
-            }
-        }
-
-        res.json({
-            totalScans,
-            completedScans,
-            criticalPorts,
-            totalVulnerabilities,
-            activeScans: activeScansCount,
-            activeScan: activeScanRow || null,
-            recentScans
-        });
+        const stats = scannerService.getDashboardStats(req.session.userId);
+        res.json(stats);
     } catch (err) {
         logger.error('Dashboard error:', err);
         res.status(500).json({ error: 'Interner Serverfehler' });
