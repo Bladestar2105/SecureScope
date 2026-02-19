@@ -181,6 +181,7 @@
                     <div class="card mb-3">
                         <div class="card-header"><h3><i class="bi bi-table mr-1"></i> Scan-Ergebnisse</h3>
                             <div class="d-flex gap-1">
+                                <button class="btn btn-outline btn-sm" onclick="createChainFromCurrentScan()"><i class="bi bi-diagram-3"></i> Chain erstellen</button>
                                 <button class="btn btn-outline btn-sm" onclick="exportResults('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
                                 <button class="btn btn-outline btn-sm" onclick="exportResults('json')"><i class="bi bi-filetype-json"></i> JSON</button>
                                 <button class="btn btn-outline btn-sm" onclick="exportResults('pdf')"><i class="bi bi-filetype-pdf"></i> PDF</button>
@@ -652,6 +653,7 @@
                 <div class="card mb-3">
                     <div class="card-header"><h3><i class="bi bi-info-circle mr-1"></i> Scan-Informationen</h3>
                         <div class="d-flex gap-1">
+                            <button class="btn btn-outline btn-sm" onclick="createChainFromDetailScan()"><i class="bi bi-diagram-3"></i> Chain erstellen</button>
                             <button class="btn btn-outline btn-sm" onclick="exportDetailResults('csv')"><i class="bi bi-filetype-csv"></i> CSV</button>
                             <button class="btn btn-outline btn-sm" onclick="exportDetailResults('json')"><i class="bi bi-filetype-json"></i> JSON</button>
                             <button class="btn btn-outline btn-sm" onclick="exportDetailResults('pdf')"><i class="bi bi-filetype-pdf"></i> PDF</button></div></div>

@@ -286,7 +286,7 @@
 
     async function loadScanResults(scanId) {
         try {
-            const d = await api(`/api/scan/${scanId}/results`);
+            const d = await api(`/api/scan/results/${scanId}`);
             document.getElementById('scanResultsPanel').classList.remove('hidden');
             const results = d.results || [];
             document.getElementById('resultTotal').textContent = results.length;
@@ -1203,6 +1203,94 @@
     // ============================================
     // ========== ATTACK CHAINS MODULE ==========
     // ============================================
+
+    window.createChainFromCurrentScan = function() {
+        if (currentScanId) createChainFromScan(currentScanId);
+        else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
+    };
+
+    window.createChainFromDetailScan = function() {
+        if (currentDetailScanId) createChainFromScan(currentDetailScanId);
+        else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
+    };
+
+    async function createChainFromScan(scanId) {
+        try {
+            const d = await api(`/api/scan/results/${scanId}`);
+            const results = d.results || [];
+
+            if (results.length === 0) {
+                showToast('warning', 'Hinweis', 'Keine Ergebnisse in diesem Scan gefunden.');
+                return;
+            }
+
+            const services = [...new Set(results.map(r => r.service).filter(s => s && s !== 'unknown'))];
+            const ports = [...new Set(results.map(r => r.port))];
+
+            showChainModal();
+
+            // Populate form
+            document.getElementById('chainFormName').value = `Chain from Scan #${scanId}`;
+            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${results.length} offene Ports)`;
+            document.getElementById('chainFormServices').value = services.join(', ');
+            document.getElementById('chainFormPorts').value = ports.join(', ');
+
+            // Generate steps
+            const container = document.getElementById('chainStepsContainer');
+            container.innerHTML = ''; // Clear default step
+
+            // Add initial Recon step
+            addChainStep();
+            let step = container.lastElementChild;
+            step.querySelector('[data-field="name"]').value = 'Initial Recon';
+            step.querySelector('[data-field="type"]').value = 'recon';
+            step.querySelector('[data-field="description"]').value = 'Fingerprinting aller offenen Ports';
+
+            // Add steps for specific services
+            const uniqueServices = new Set(services);
+
+            if (uniqueServices.has('http') || uniqueServices.has('https') || uniqueServices.has('http-alt') || uniqueServices.has('ssl/http')) {
+                addChainStep();
+                step = container.lastElementChild;
+                step.querySelector('[data-field="name"]').value = 'Web Audit';
+                step.querySelector('[data-field="type"]').value = 'audit';
+                step.querySelector('[data-field="description"]').value = 'Prüfung auf Web-Schwachstellen';
+                step.querySelector('[data-field="tool"]').value = 'nikto';
+            }
+
+            if (uniqueServices.has('ssh')) {
+                addChainStep();
+                step = container.lastElementChild;
+                step.querySelector('[data-field="name"]').value = 'SSH Audit';
+                step.querySelector('[data-field="type"]').value = 'audit';
+                step.querySelector('[data-field="description"]').value = 'SSH Konfigurationsprüfung';
+            }
+
+            if (uniqueServices.has('ftp')) {
+                addChainStep();
+                step = container.lastElementChild;
+                step.querySelector('[data-field="name"]').value = 'FTP Check';
+                step.querySelector('[data-field="type"]').value = 'auth_test';
+                step.querySelector('[data-field="description"]').value = 'Prüfung auf anonymen Login';
+            }
+
+            if (uniqueServices.has('mysql') || uniqueServices.has('postgresql') || uniqueServices.has('mssql')) {
+                 addChainStep();
+                step = container.lastElementChild;
+                step.querySelector('[data-field="name"]').value = 'DB Audit';
+                step.querySelector('[data-field="type"]').value = 'audit';
+                step.querySelector('[data-field="description"]').value = 'Datenbank-Sicherheitsprüfung';
+            }
+
+            // Renumber
+            renumberSteps();
+
+            showToast('info', 'Chain generiert', 'Angriffskette wurde basierend auf Scan-Ergebnissen vorbereitet.');
+
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+        }
+    }
 
     async function loadChainStats() {
         try {
