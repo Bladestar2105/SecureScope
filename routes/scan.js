@@ -408,7 +408,15 @@ function exportJSON(res, scan, results) {
 
 function exportCSV(res, scan, results) {
     const header = 'IP-Adresse,Port,Protokoll,Service,Produkt,Version,Banner,CPE,OS,Status,Risiko';
-    const esc = (s) => s ? `"${String(s).replace(/"/g, '""')}"` : '';
+    const esc = (s) => {
+        if (!s) return '';
+        let str = String(s);
+        // Prevent formula injection (CSV Injection)
+        if (/^[=@+\-]/.test(str)) {
+            str = "'" + str;
+        }
+        return `"${str.replace(/"/g, '""')}"`;
+    };
     const rows = results.map(r =>
         `${r.ip_address},${r.port},${r.protocol},${esc(r.service)},${esc(r.service_product)},${esc(r.service_version)},${esc(r.banner)},${esc(r.service_cpe)},${esc(r.os_name)},${r.state},${r.risk_level}`
     );
