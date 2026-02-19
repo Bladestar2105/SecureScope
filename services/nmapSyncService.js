@@ -44,18 +44,27 @@ class NmapSyncService {
                     if (res.statusCode !== 200) {
                         return reject(new Error(`HTTP ${res.statusCode}`));
                     }
-                    const chunks = [];
-                    let downloaded = 0;
-                    res.on('data', (chunk) => {
-                        chunks.push(chunk);
-                        downloaded += chunk.length;
+                    const fileStream = fs.createWriteStream(destPath);
+                    res.pipe(fileStream);
+
+                    fileStream.on('finish', () => {
+                        fileStream.close(() => {
+                            fs.readFile(destPath, 'utf8', (err, data) => {
+                                if (err) reject(err);
+                                else resolve(data);
+                            });
+                        });
                     });
-                    res.on('end', () => {
-                        const data = Buffer.concat(chunks);
-                        fs.writeFileSync(destPath, data);
-                        resolve(data.toString('utf8'));
+
+                    fileStream.on('error', (err) => {
+                        fs.unlink(destPath, () => {});
+                        reject(err);
                     });
-                    res.on('error', reject);
+
+                    res.on('error', (err) => {
+                        fileStream.end();
+                        reject(err);
+                    });
                 }).on('error', reject);
             };
             doRequest(url);
