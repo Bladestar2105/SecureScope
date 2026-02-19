@@ -38,9 +38,30 @@ class NmapParser {
 
         // Additional risk assessment based on service name
         const svcLower = (serviceName || '').toLowerCase();
-        if (['telnet', 'ftp', 'rlogin', 'rsh'].includes(svcLower)) return 'critical';
-        if (['http', 'smtp', 'pop3', 'imap'].includes(svcLower)) return 'warning';
-        if (['https', 'ssh', 'imaps', 'pop3s', 'smtps'].includes(svcLower)) return 'safe';
+
+        // Critical services (unencrypted or sensitive)
+        const criticalServices = [
+            'telnet', 'ftp', 'rlogin', 'rsh',
+            'mysql', 'postgresql', 'redis', 'mongodb',
+            'ms-sql-s', 'ms-sql-m', 'oracle',
+            'msrpc', 'netbios-ssn', 'microsoft-ds',
+            'rdp', 'vnc', 'snmp'
+        ];
+        if (criticalServices.includes(svcLower)) return 'critical';
+
+        // Warning services (potentially unencrypted or common targets)
+        const warningServices = [
+            'http', 'smtp', 'pop3', 'imap',
+            'http-alt', 'rtsp', 'sip'
+        ];
+        if (warningServices.includes(svcLower)) return 'warning';
+
+        // Safe services (encrypted by default or low-risk infrastructure)
+        const safeServices = [
+            'https', 'ssh', 'imaps', 'pop3s', 'smtps',
+            'dns', 'domain', 'ntp', 'ldaps'
+        ];
+        if (safeServices.includes(svcLower)) return 'safe';
 
         return 'warning';
     }
