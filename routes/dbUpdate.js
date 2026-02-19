@@ -5,7 +5,6 @@ const { requirePermission } = require('../middleware/rbac');
 const { getDatabase } = require('../config/database');
 const logger = require('../services/logger');
 const CVESyncService = require('../services/cveSyncService');
-const NmapSyncService = require('../services/nmapSyncService');
 const ExploitDbSyncService = require('../services/exploitDbSyncService');
 const { spawn } = require('child_process');
 const path = require('path');
