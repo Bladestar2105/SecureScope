@@ -9,7 +9,7 @@ const compression = require('compression');
 const path = require('path');
 const { sessionTimeout, csrfProtection } = require('./middleware/auth');
 const { apiLimiter } = require('./middleware/rateLimit');
-const { SESSION_SECRET } = require('./config/security');
+const { SESSION_SECRET, isCookieSecure } = require('./config/security');
 const logger = require('./services/logger');
 
 // Route imports
@@ -72,7 +72,7 @@ app.use(session({
     saveUninitialized: false,
     cookie: {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isCookieSecure,
         sameSite: process.env.NODE_ENV === 'test' ? 'lax' : 'strict',
         maxAge: 30 * 60 * 1000 // 30 minutes
     }

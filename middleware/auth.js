@@ -1,6 +1,6 @@
 const { doubleCsrf } = require("csrf-csrf");
 const logger = require('../services/logger');
-const { CSRF_SECRET } = require('../config/security');
+const { CSRF_SECRET, isCookieSecure } = require('../config/security');
 
 const {
     doubleCsrfProtection,
@@ -11,7 +11,7 @@ const {
     cookieOptions: {
         httpOnly: true,
         sameSite: "strict",
-        secure: process.env.NODE_ENV === 'production',
+        secure: isCookieSecure,
         path: "/"
     },
     size: 64,

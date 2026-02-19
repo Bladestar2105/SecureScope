@@ -128,6 +128,7 @@ docker run -d \
 | `DATABASE_PATH` | Pfad zur SQLite-Datenbank | `./database/securescope.db` |
 | `LOG_LEVEL` | Log-Level (error, warn, info, debug) | `info` |
 | `NODE_ENV` | Umgebung (development, production) | `development` |
+| `COOKIE_SECURE` | Erzwingt Secure-Cookies (true/false) | `true` in Prod |
 | `SCAN_TIMEOUT` | Maximale Scan-Dauer in ms | `300000` (5 Min.) |
 | `MAX_CONCURRENT_SCANS` | Max. gleichzeitige Scans | `3` |
 | `ALLOW_EXTERNAL_SCANS` | Externe IPs scannen erlauben | `false` |
