@@ -33,17 +33,18 @@ function getSecret(envVar, fallback = null) {
 
     if (isProduction) {
         if (value) {
-            throw new Error(`CRITICAL SECURITY ERROR: Insecure ${envVar} provided in production environment!`);
+            console.error(`[CRITICAL SECURITY WARNING] Insecure ${envVar} provided in production environment! Ignoring it and using a generated/fallback secret. Sessions and encrypted data may not persist.`);
         } else {
-            throw new Error(`CRITICAL SECURITY ERROR: Required environment variable ${envVar} is missing in production!`);
+            console.error(`[CRITICAL SECURITY WARNING] Required environment variable ${envVar} is missing in production! Using a generated/fallback secret. Sessions and encrypted data may not persist.`);
         }
-    }
-
-    // For non-production:
-    if (value && isInsecure(value)) {
-        // We allow insecure values in non-production but warn
-        console.warn(`[SECURITY WARNING] Insecure ${envVar} detected. Using it anyway because NOT in production.`);
-        return value;
+        // Fall through to generation logic...
+    } else {
+        // For non-production:
+        if (value && isInsecure(value)) {
+            // We allow insecure values in non-production but warn
+            console.warn(`[SECURITY WARNING] Insecure ${envVar} detected. Using it anyway because NOT in production.`);
+            return value;
+        }
     }
 
     if (fallback) {

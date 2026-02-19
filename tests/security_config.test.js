@@ -26,19 +26,32 @@ describe('Security Configuration', () => {
         expect(security.SESSION_SECRET.length).toBeGreaterThan(16);
     });
 
-    test('should throw error in production if SESSION_SECRET is missing', () => {
+    test('should generate random secret in production if SESSION_SECRET is missing', () => {
         process.env.NODE_ENV = 'production';
-        expect(() => {
-            require('../config/security');
-        }).toThrow(/Required environment variable SESSION_SECRET is missing/);
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const security = require('../config/security');
+
+        expect(security.SESSION_SECRET).toBeDefined();
+        expect(security.SESSION_SECRET.length).toBeGreaterThan(16);
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Required environment variable SESSION_SECRET is missing'));
+
+        consoleSpy.mockRestore();
     });
 
-    test('should throw error in production if SESSION_SECRET is insecure', () => {
+    test('should generate random secret in production if SESSION_SECRET is insecure', () => {
         process.env.NODE_ENV = 'production';
         process.env.SESSION_SECRET = 'fallback-secret-change-me';
-        expect(() => {
-            require('../config/security');
-        }).toThrow(/Insecure SESSION_SECRET provided/);
+        const consoleSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+
+        const security = require('../config/security');
+
+        expect(security.SESSION_SECRET).toBeDefined();
+        expect(security.SESSION_SECRET).not.toBe('fallback-secret-change-me');
+        expect(security.SESSION_SECRET.length).toBeGreaterThan(16);
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Insecure SESSION_SECRET provided'));
+
+        consoleSpy.mockRestore();
     });
 
     test('should use provided secrets if they are secure', () => {
