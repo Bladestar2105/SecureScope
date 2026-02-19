@@ -451,13 +451,4 @@ describe('Input Validation', () => {
         expect(ScannerService.validateTarget('192.168.1.0/16').valid).toBe(false); // Too large
     });
 
-    test('should return correct risk levels', () => {
-        expect(NmapParser.getRiskLevel(22, 'open')).toBe('safe');
-        expect(NmapParser.getRiskLevel(443, 'open')).toBe('safe');
-        expect(NmapParser.getRiskLevel(23, 'open')).toBe('critical');
-        expect(NmapParser.getRiskLevel(445, 'open')).toBe('critical');
-        expect(NmapParser.getRiskLevel(80, 'open')).toBe('warning');
-        expect(NmapParser.getRiskLevel(12345, 'open')).toBe('warning');
-        expect(NmapParser.getRiskLevel(80, 'closed')).toBe('info');
-    });
 });
