@@ -298,22 +298,50 @@
             const tbody = document.getElementById('resultsTableBody');
             if (results.length > 0) {
                 document.getElementById('resultsEmpty').classList.add('hidden');
-                tbody.innerHTML = results.map(r => {
-                    let svcInfo = esc(r.service || '-');
-                    if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
-                    } else if (r.service_product) {
-                        let ver = r.service_product;
-                        if (r.service_version) ver += ' ' + r.service_version;
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
-                    }
-                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
-                    return `<tr>
-                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
-                    <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
-                    <td>${riskBadge(r.risk_level)}</td>
-                </tr>`;
-                }).join('');
+
+                // Group by IP
+                const grouped = {};
+                results.forEach(r => {
+                    if (!grouped[r.ip_address]) grouped[r.ip_address] = [];
+                    grouped[r.ip_address].push(r);
+                });
+
+                let html = '';
+                for (const [ip, ports] of Object.entries(grouped)) {
+                    // Find first OS info
+                    const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
+
+                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
+                        <td colspan="6" style="padding:0.75rem 1rem">
+                            <div class="d-flex justify-between align-center">
+                                <div>
+                                    <strong style="font-size:1rem">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                </div>
+                                <button class="btn btn-outline btn-sm" onclick="showExecuteChainModal(null, ${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-play-circle"></i> Chain ausführen
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    html += ports.map(r => {
+                        let svcInfo = esc(r.service || '-');
+                        if (r.banner) {
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
+                        } else if (r.service_product) {
+                            let ver = r.service_product;
+                            if (r.service_version) ver += ' ' + r.service_version;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                        }
+                        return `<tr>
+                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
+                        <td>${riskBadge(r.risk_level)}</td>
+                    </tr>`;
+                    }).join('');
+                }
+                tbody.innerHTML = html;
             } else {
                 document.getElementById('resultsEmpty').classList.remove('hidden');
                 tbody.innerHTML = '';
@@ -1228,11 +1256,15 @@
             const services = [...new Set(results.map(r => r.service).filter(s => s && s !== 'unknown'))];
             const ports = [...new Set(results.map(r => r.port))];
 
+            // Try to find Target IP if it's a single target scan
+            const uniqueIPs = [...new Set(results.map(r => r.ip_address))];
+            const targetInfo = uniqueIPs.length === 1 ? `Target: ${uniqueIPs[0]}` : `Targets: ${uniqueIPs.length} Hosts`;
+
             showChainModal();
 
             // Populate form
             document.getElementById('chainFormName').value = `Chain from Scan #${scanId}`;
-            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${results.length} offene Ports)`;
+            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${targetInfo}, ${results.length} offene Ports)`;
             document.getElementById('chainFormServices').value = services.join(', ');
             document.getElementById('chainFormPorts').value = ports.join(', ');
 
@@ -1447,18 +1479,79 @@
         try { await api(`/api/attack-chains/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Angriffskette gelöscht.'); loadAttackChains(); loadChainStats(); } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
-    window.showExecuteChainModal = function (chainId) {
-        document.getElementById('chainExecChainId').value = chainId;
+    window.showExecuteChainModal = function (chainId, preSelectedScanId, preSelectedTargetIp) {
+        // Clear previous state
+        const chainSel = document.getElementById('chainExecChainId');
+        if (chainId) {
+            // Ensure chains are loaded
+            api('/api/attack-chains').then(d => {
+                const chains = d.chains || d || [];
+                chainSel.innerHTML = '<option value="">Chain wählen...</option>' +
+                    chains.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                chainSel.value = chainId;
+            }).catch(() => {});
+        } else {
+            // Load chains if dropdown empty
+            if (chainSel.options.length <= 1) {
+                api('/api/attack-chains').then(d => {
+                    const chains = d.chains || d || [];
+                    chainSel.innerHTML = '<option value="">Chain wählen...</option>' +
+                        chains.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                });
+            }
+        }
+
         document.getElementById('chainExecLHOST').value = window.location.hostname;
         document.getElementById('chainExecLPORT').value = '4444';
         document.getElementById('chainExecPanel').classList.remove('hidden');
-        // Load available scans
-        api('/api/scan/history').then(d => {
-            const sel = document.getElementById('chainExecScanId');
-            sel.innerHTML = '<option value="">Scan wählen...</option>' +
+
+        // Setup Scan ID Dropdown
+        const scanSel = document.getElementById('chainExecScanId');
+        const ipSel = document.getElementById('chainExecTargetIp');
+
+        // Reset IP selector
+        ipSel.innerHTML = '<option value="">Bitte Scan wählen...</option>';
+
+        // Setup listener for Scan ID change
+        scanSel.onchange = async () => {
+            const sid = scanSel.value;
+            if (!sid) {
+                ipSel.innerHTML = '<option value="">Bitte Scan wählen...</option>';
+                return;
+            }
+            try {
+                ipSel.innerHTML = '<option>Lade IPs...</option>';
+                const res = await api(`/api/scan/results/${sid}`);
+                const uniqueIPs = [...new Set((res.results || []).map(r => r.ip_address))];
+
+                if (uniqueIPs.length > 0) {
+                    ipSel.innerHTML = uniqueIPs.map(ip => `<option value="${esc(ip)}">${esc(ip)}</option>`).join('');
+                    // Auto-select if only one
+                    if (uniqueIPs.length === 1) ipSel.value = uniqueIPs[0];
+                } else {
+                    ipSel.innerHTML = '<option value="">Keine IPs gefunden</option>';
+                }
+            } catch(e) {
+                ipSel.innerHTML = '<option value="">Fehler beim Laden</option>';
+            }
+        };
+
+        // Load scans
+        api('/api/scan/history').then(async d => {
+            scanSel.innerHTML = '<option value="">Scan wählen...</option>' +
                 (d.scans || []).filter(s => s.status === 'completed').map(s =>
                     `<option value="${s.id}">#${s.id} - ${esc(s.target)} (${formatDate(s.started_at)})</option>`
                 ).join('');
+
+            // Handle Pre-Selection
+            if (preSelectedScanId) {
+                scanSel.value = preSelectedScanId;
+                // Trigger change to load IPs
+                await scanSel.onchange();
+                if (preSelectedTargetIp) {
+                    ipSel.value = preSelectedTargetIp;
+                }
+            }
         }).catch(() => {});
     };
     window.hideExecuteChainModal = function () { document.getElementById('chainExecPanel').classList.add('hidden'); };
@@ -1467,17 +1560,25 @@
         if (e && e.preventDefault) e.preventDefault();
         const chainId = document.getElementById('chainExecChainId').value;
         const scanId = document.getElementById('chainExecScanId').value;
+        const targetIp = document.getElementById('chainExecTargetIp').value;
+        const targetPort = document.getElementById('chainExecTargetPort').value;
         const lhost = document.getElementById('chainExecLHOST').value;
         const lport = document.getElementById('chainExecLPORT').value;
 
+        if (!chainId) { showToast('warning', 'Hinweis', 'Bitte eine Angriffskette auswählen'); return; }
         if (!scanId) { showToast('warning', 'Hinweis', 'Bitte einen Scan auswählen'); return; }
+        if (!targetIp) { showToast('warning', 'Hinweis', 'Bitte eine Ziel-IP auswählen'); return; }
 
         try {
             const params = { LHOST: lhost, LPORT: lport };
-            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', {
+            const payload = {
                 scanId: parseInt(scanId),
+                targetIp: targetIp,
                 params: params
-            });
+            };
+            if (targetPort) payload.targetPort = parseInt(targetPort);
+
+            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', payload);
             showToast('success', 'Gestartet', `Angriffskette wird ausgeführt. Execution #${d.executionId || d.id || ''}`);
             hideExecuteChainModal();
             loadAttackChains(); loadChainStats();
