@@ -101,9 +101,9 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // Execute an attack chain (legacy endpoint)
-router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res) => {
+router.post('/execute', requireAuth, requirePermission('scan:start'), async (req, res) => {
     try {
-        const { scanId, chainId, targetIp, targetPort } = req.body;
+        const { scanId, chainId, targetIp, targetPort, params } = req.body;
         if (!scanId || !chainId) {
             return res.status(400).json({ error: 'scanId und chainId sind erforderlich' });
         }
@@ -115,10 +115,11 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res)
             const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
             ip = scan ? scan.target : '0.0.0.0';
         }
-        const result = AttackChainService.executeChain(
+        const result = await AttackChainService.executeChain(
             parseInt(scanId), parseInt(chainId), ip,
             targetPort ? parseInt(targetPort) : null,
-            req.session.userId
+            req.session.userId,
+            params || {}
         );
         res.json(result);
     } catch (err) {
@@ -128,10 +129,10 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res)
 });
 
 // Execute a specific chain by ID
-router.post('/:id/execute', requireAuth, requirePermission('scan:start'), (req, res) => {
+router.post('/:id/execute', requireAuth, requirePermission('scan:start'), async (req, res) => {
     try {
         const chainId = parseInt(req.params.id);
-        const { scanId, targetIp, targetPort } = req.body;
+        const { scanId, targetIp, targetPort, params } = req.body;
         if (!scanId) {
             return res.status(400).json({ error: 'scanId ist erforderlich' });
         }
@@ -143,10 +144,11 @@ router.post('/:id/execute', requireAuth, requirePermission('scan:start'), (req, 
             const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
             ip = scan ? scan.target : '0.0.0.0';
         }
-        const result = AttackChainService.executeChain(
+        const result = await AttackChainService.executeChain(
             parseInt(scanId), chainId, ip,
             targetPort ? parseInt(targetPort) : null,
-            req.session.userId
+            req.session.userId,
+            params || {}
         );
         res.json(result);
     } catch (err) {

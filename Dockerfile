@@ -34,6 +34,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     unzip \
     git \
+    python3 \
+    ruby \
+    netcat-openbsd \
+    socat \
+    gcc \
+    make \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy production dependencies from builder
