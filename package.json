@@ -39,7 +39,8 @@
     "playwright": "^1.58.2",
     "uuid": "^11.0.5",
     "winston": "^3.17.0",
-    "winston-daily-rotate-file": "^5.0.0"
+    "winston-daily-rotate-file": "^5.0.0",
+    "ws": "^8.19.0"
   },
   "devDependencies": {
     "jest": "^29.7.0",

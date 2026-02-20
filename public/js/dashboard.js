@@ -8,6 +8,7 @@
     let csrfToken = null, currentUser = null, currentScanId = null;
     let currentDetailScanId = null, eventSource = null, previousView = 'dashboard';
     let userRoles = [], userPermissions = [];
+    let currentShellWs = null, currentTerm = null, fitAddon = null;
 
     // ============================================
     // Toast System
@@ -1448,6 +1449,8 @@
 
     window.showExecuteChainModal = function (chainId) {
         document.getElementById('chainExecChainId').value = chainId;
+        document.getElementById('chainExecLHOST').value = window.location.hostname;
+        document.getElementById('chainExecLPORT').value = '4444';
         document.getElementById('chainExecPanel').classList.remove('hidden');
         // Load available scans
         api('/api/scan/history').then(d => {
@@ -1464,9 +1467,17 @@
         if (e && e.preventDefault) e.preventDefault();
         const chainId = document.getElementById('chainExecChainId').value;
         const scanId = document.getElementById('chainExecScanId').value;
+        const lhost = document.getElementById('chainExecLHOST').value;
+        const lport = document.getElementById('chainExecLPORT').value;
+
         if (!scanId) { showToast('warning', 'Hinweis', 'Bitte einen Scan auswählen'); return; }
+
         try {
-            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', { scanId: parseInt(scanId) });
+            const params = { LHOST: lhost, LPORT: lport };
+            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', {
+                scanId: parseInt(scanId),
+                params: params
+            });
             showToast('success', 'Gestartet', `Angriffskette wird ausgeführt. Execution #${d.executionId || d.id || ''}`);
             hideExecuteChainModal();
             loadAttackChains(); loadChainStats();
@@ -1478,6 +1489,11 @@
             const d = await api(`/api/attack-chains/executions/${execId}`);
             const ex = d.execution || d;
             const results = ex.results ? (typeof ex.results === 'string' ? JSON.parse(ex.results) : ex.results) : [];
+            const findings = ex.findings ? (typeof ex.findings === 'string' ? JSON.parse(ex.findings) : ex.findings) : [];
+
+            // Check for shell sessions
+            const shellFinding = findings.find(f => f.sessionId && (f.type === 'exploit_success' || f.category === 'Remote Shell'));
+
             document.getElementById('chainExecDetailContent').innerHTML = `
                 <div class="detail-grid">
                     <div class="detail-item"><label>Execution ID</label><span>#${ex.id}</span></div>
@@ -1486,6 +1502,13 @@
                     <div class="detail-item"><label>Abgeschlossen</label><span>${formatDate(ex.completed_at)}</span></div>
                     <div class="detail-item"><label>Schritte</label><span>${ex.steps_completed || 0} / ${ex.steps_total || 0}</span></div>
                 </div>
+
+                ${shellFinding ? `
+                <div class="alert alert-success mt-2 d-flex justify-between align-center" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);padding:1rem;border-radius:var(--radius-sm)">
+                    <div><strong><i class="bi bi-terminal-fill mr-1"></i> Remote Shell verfügbar!</strong><br><small>Session ID: ${shellFinding.sessionId}</small></div>
+                    <button class="btn btn-primary" onclick="showShellModal('${shellFinding.sessionId}')"><i class="bi bi-terminal"></i> Verbinden</button>
+                </div>` : ''}
+
                 ${results.length > 0 ? `<h4 class="mt-2 mb-1">Ergebnisse</h4>
                 <div class="chain-exec-results">${results.map((r, i) => `
                     <div class="exec-result-step">
@@ -1493,13 +1516,103 @@
                         <div class="step-result-info">
                             <strong>${esc(r.step || r.name || 'Schritt ' + (i+1))}</strong>
                             <span class="badge badge-${r.status === 'completed' ? 'green' : r.status === 'failed' ? 'red' : 'yellow'}">${r.status || 'pending'}</span>
-                            ${r.findings ? `<p class="text-muted mt-1">${esc(typeof r.findings === 'string' ? r.findings : JSON.stringify(r.findings))}</p>` : ''}
+                            ${r.findings && r.findings.length > 0 ?
+                                `<ul class="text-muted mt-1" style="font-size:0.85rem;padding-left:1rem">${r.findings.map(f => `<li>${esc(f.title || f.category)}</li>`).join('')}</ul>`
+                                : '<p class="text-muted mt-1">Keine Befunde.</p>'}
                         </div>
                     </div>
                 `).join('')}</div>` : '<p class="text-muted mt-2">Keine Ergebnisse verfügbar.</p>'}`;
             document.getElementById('chainExecDetailModal').classList.add('active');
         } catch (e) { showToast('error', 'Fehler', e.message); }
     };
+
+    // ============================================
+    // ========== SHELL MODULE ==========
+    // ============================================
+    window.showShellModal = function(sessionId) {
+        document.getElementById('shellModal').classList.add('active');
+        // Wait for modal to be visible for xterm to calculate size
+        setTimeout(() => initShellSession(sessionId), 100);
+    };
+
+    window.hideShellModal = function() {
+        document.getElementById('shellModal').classList.remove('active');
+        if (currentShellWs) {
+            currentShellWs.close();
+            currentShellWs = null;
+        }
+        if (currentTerm) {
+            currentTerm.dispose();
+            currentTerm = null;
+        }
+        document.getElementById('terminal-container').innerHTML = '';
+        document.getElementById('shellStatus').className = 'badge badge-gray';
+        document.getElementById('shellStatus').textContent = 'Getrennt';
+    };
+
+    function initShellSession(sessionId) {
+        const container = document.getElementById('terminal-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // Check if xterm is loaded
+        if (typeof Terminal === 'undefined') {
+            container.innerHTML = '<div style="color:red;padding:1rem">Fehler: Terminal-Bibliothek nicht geladen.</div>';
+            return;
+        }
+
+        const term = new Terminal({
+            cursorBlink: true,
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff'
+            }
+        });
+
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+
+        term.open(container);
+        fitAddon.fit();
+        currentTerm = term;
+
+        window.addEventListener('resize', () => fitAddon.fit());
+
+        // Connect WebSocket
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/shell/${sessionId}`;
+        const ws = new WebSocket(wsUrl);
+        currentShellWs = ws;
+
+        term.write('\r\n\x1b[33mConnecting to shell session...\x1b[0m\r\n');
+
+        ws.onopen = () => {
+            term.write('\r\n\x1b[32mConnected!\x1b[0m\r\n');
+            document.getElementById('shellStatus').className = 'badge badge-green';
+            document.getElementById('shellStatus').textContent = 'Verbunden';
+            term.focus();
+        };
+
+        ws.onmessage = (event) => {
+            term.write(event.data);
+        };
+
+        ws.onclose = () => {
+            term.write('\r\n\x1b[31mConnection closed.\x1b[0m\r\n');
+            document.getElementById('shellStatus').className = 'badge badge-red';
+            document.getElementById('shellStatus').textContent = 'Getrennt';
+        };
+
+        ws.onerror = (err) => {
+            term.write('\r\n\x1b[31mConnection error.\x1b[0m\r\n');
+        };
+
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(data);
+            }
+        });
+    }
     window.hideChainExecDetailModal = function () { document.getElementById('chainExecDetailModal').classList.remove('active'); };
 
     // ============================================
