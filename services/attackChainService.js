@@ -4,6 +4,7 @@ const FingerprintService = require('./fingerprintService');
 const ExploitService = require('./exploitService');
 const ShellService = require('./shellService');
 const ExploitDbSyncService = require('./exploitDbSyncService');
+const NmapParser = require('./nmapParser');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -235,7 +236,7 @@ class AttackChainService {
 
             case 'audit': {
                 // Configuration audit checks
-                const portInfo = require('./scanner').constructor.CRITICAL_PORTS[targetPort];
+                const portInfo = NmapParser.CRITICAL_PORTS[targetPort];
                 if (portInfo && portInfo.risk === 'critical') {
                     findings.push({
                         type: 'vulnerability',
@@ -305,8 +306,9 @@ class AttackChainService {
             case 'vuln_scan': {
                 // Match against vulnerability database
                 const vulns = db.prepare(`
-                    SELECT v.* FROM scan_vulnerabilities sv
-                    JOIN vulnerabilities v ON sv.vulnerability_id = v.id
+                    SELECT sv.cve_id, sv.title, sv.severity, sv.cvss_score, ce.description
+                    FROM scan_vulnerabilities sv
+                    LEFT JOIN cve_entries ce ON sv.cve_id = ce.cve_id
                     JOIN scan_results sr ON sv.scan_result_id = sr.id
                     WHERE sv.scan_id = ? AND sr.ip_address = ? AND sr.port = ?
                 `).all(scanId, targetIp, targetPort);
@@ -316,10 +318,10 @@ class AttackChainService {
                         type: 'vulnerability',
                         category: 'Schwachstelle',
                         title: `${vuln.cve_id || 'N/A'}: ${vuln.title}`,
-                        details: vuln.description,
+                        details: vuln.description || vuln.title,
                         severity: vuln.severity,
                         cvss: vuln.cvss_score,
-                        remediation: vuln.remediation
+                        remediation: null
                     });
                 }
                 return { success: true, findings, details: `${vulns.length} Schwachstellen gefunden` };
@@ -549,6 +551,7 @@ class AttackChainService {
     // Delete a chain
     static delete(id) {
         const db = getDatabase();
+        db.prepare('DELETE FROM attack_chain_executions WHERE chain_id = ?').run(id);
         db.prepare('DELETE FROM attack_chains WHERE id = ?').run(id);
         logger.info(`Attack chain deleted: ID ${id}`);
     }
