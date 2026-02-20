@@ -52,6 +52,8 @@ SecureScope ist ein webbasiertes Netzwerk-Sicherheitsaudit-Tool, das Port-Scanni
 - **Node.js** >= 18.0.0
 - **npm** >= 9.0.0
 - **Nmap** (muss im System-PATH verfügbar sein)
+- **Git** (für ExploitDB Sync)
+- **curl** & **unzip** (für CVE/Exploit Sync)
 
 ### Installation
 

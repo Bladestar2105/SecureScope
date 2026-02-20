@@ -65,6 +65,16 @@ function clearCheckpoint(type) {
 
 function gc() { if (global.gc) try { global.gc(); } catch {} }
 
+function execSafe(cmd, options = {}) {
+    try {
+        return execSync(cmd, { ...options, stdio: 'pipe' });
+    } catch (err) {
+        const stdout = err.stdout ? err.stdout.toString() : '';
+        const stderr = err.stderr ? err.stderr.toString() : '';
+        throw new Error(`Command failed: ${cmd}\nSTDOUT: ${stdout}\nSTDERR: ${stderr}\nError: ${err.message}`);
+    }
+}
+
 // ============================================
 // CVE SYNC - Disk-Efficient Year-by-Year Extraction
 // ============================================
@@ -108,7 +118,7 @@ async function syncCVE(userId) {
             emit('download', 2, 'Lade CVE-Daten von GitHub cvelistV5...');
             const zipUrl = 'https://github.com/CVEProject/cvelistV5/archive/refs/heads/main.zip';
             emit('download', 5, 'Lade cvelistV5 Repository herunter (ca. 500 MB)...');
-            execSync(`curl -L -f -o "${zipPath}" --connect-timeout 30 --max-time 1200 "${zipUrl}" 2>/dev/null`, {
+            execSafe(`curl -L -f -o "${zipPath}" --connect-timeout 30 --max-time 1200 "${zipUrl}"`, {
                 maxBuffer: 10 * 1024 * 1024, timeout: 1260000
             });
             if (!fs.existsSync(zipPath) || fs.statSync(zipPath).size < 100000) {
@@ -139,7 +149,7 @@ async function syncCVE(userId) {
             emit('extract', 30, 'Entpacke vollständig (Fallback)...');
             if (fs.existsSync(extractBase)) execSync(`rm -rf "${extractBase}"`);
             ensureDir(extractBase);
-            execSync(`unzip -q -o "${zipPath}" -d "${extractBase}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+            execSafe(`unzip -q -o "${zipPath}" -d "${extractBase}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
             const cvesDir = path.join(extractBase, 'cvelistV5-main', 'cves');
             if (!fs.existsSync(cvesDir)) throw new Error('CVE-Verzeichnis nicht gefunden');
             yearList = fs.readdirSync(cvesDir).filter(d => /^\d{4}$/.test(d)).sort();
@@ -186,12 +196,13 @@ async function syncCVE(userId) {
             // Extract only this year's files from the zip
             emit('extract', 33 + Math.round((yi / yearList.length) * 5), `Entpacke Jahr ${year}...`);
             try {
-                execSync(`unzip -q -o "${zipPath}" "cvelistV5-main/cves/${year}/*" -d "${yearExtractDir}" 2>/dev/null`, {
+                execSafe(`unzip -q -o "${zipPath}" "cvelistV5-main/cves/${year}/*" -d "${yearExtractDir}"`, {
                     maxBuffer: 50 * 1024 * 1024, timeout: 120000
                 });
             } catch (e) {
                 // Some years might not exist in zip
                 totalErrors++;
+                emit('extract', 33 + Math.round((yi / yearList.length) * 5), `Warnung: Jahr ${year} konnte nicht entpackt werden: ${e.message}`);
                 continue;
             }
 
@@ -466,14 +477,14 @@ async function syncExploits(userId) {
         if (repoExists) {
             emit('download', 5, 'Aktualisiere ExploitDB Repository (git pull)...');
             try {
-                execSync(`cd "${EXPLOITDB_DIR}" && git pull --ff-only 2>&1`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
-            } catch {
-                emit('download', 10, 'Git pull fehlgeschlagen, versuche Reset...');
-                execSync(`cd "${EXPLOITDB_DIR}" && git fetch origin && git reset --hard origin/main 2>&1`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
+                execSafe(`cd "${EXPLOITDB_DIR}" && git pull --ff-only`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
+            } catch (err) {
+                emit('download', 10, `Git pull fehlgeschlagen (${err.message}), versuche Reset...`);
+                execSafe(`cd "${EXPLOITDB_DIR}" && git fetch origin && git reset --hard origin/main`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
             }
         } else {
             emit('download', 5, 'Klone ExploitDB Repository (kann mehrere Minuten dauern)...');
-            execSync(`git clone --depth 1 "https://gitlab.com/exploit-database/exploitdb.git" "${EXPLOITDB_DIR}" 2>&1`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+            execSafe(`git clone --depth 1 "https://gitlab.com/exploit-database/exploitdb.git" "${EXPLOITDB_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
         }
         emit('download', 30, 'Repository bereit.');
 

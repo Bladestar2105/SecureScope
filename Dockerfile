@@ -28,9 +28,12 @@ FROM node:20-slim
 
 WORKDIR /app
 
-# Install runtime dependencies (nmap)
+# Install runtime dependencies (nmap, curl, unzip, git for sync workers)
 RUN apt-get update && apt-get install -y \
     nmap \
+    curl \
+    unzip \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy production dependencies from builder
