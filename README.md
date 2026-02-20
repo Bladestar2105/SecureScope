@@ -108,13 +108,15 @@ docker build -t securescope .
 # Container starten
 docker run -d \
   --name securescope \
-  -p 3000:3000 \
+  --network host \
   -e SESSION_SECRET=ihr_geheimes_passwort \
   -e CSRF_SECRET=ihr_csrf_geheimnis \
   -v securescope_data:/app/database \
   -v securescope_logs:/app/logs \
   securescope
 ```
+
+> **Hinweis:** Die Option `--network host` wird empfohlen, um lokale Netzwerke korrekt scannen zu können (ARP-Erkennung, OS-Fingerprinting) und die Performance zu verbessern.
 
 ---
 
@@ -131,7 +133,7 @@ docker run -d \
 | `LOG_LEVEL` | Log-Level (error, warn, info, debug) | `info` |
 | `NODE_ENV` | Umgebung (development, production) | `development` |
 | `COOKIE_SECURE` | Erzwingt Secure-Cookies (true/false) | `true` in Prod |
-| `SCAN_TIMEOUT` | Maximale Scan-Dauer in ms | `300000` (5 Min.) |
+| `SCAN_TIMEOUT` | Maximale Scan-Dauer in ms | `900000` (15 Min.) |
 | `MAX_CONCURRENT_SCANS` | Max. gleichzeitige Scans | `3` |
 | `ALLOW_EXTERNAL_SCANS` | Externe IPs scannen erlauben | `false` |
 
