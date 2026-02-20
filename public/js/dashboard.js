@@ -9,6 +9,7 @@
     let currentDetailScanId = null, eventSource = null, previousView = 'dashboard';
     let userRoles = [], userPermissions = [];
     let currentShellWs = null, currentTerm = null, fitAddon = null;
+    let currentChainExecId = null;
 
     // ============================================
     // Toast System
@@ -80,6 +81,9 @@
                 if (data.type === 'scan_progress') updateScanProgress(data);
                 else if (data.type === 'scan_complete') handleScanComplete(data);
                 else if (data.type === 'scan_error') handleScanError(data);
+                else if (data.type === 'chain_progress') handleChainProgress(data);
+                else if (data.type === 'chain_complete') handleChainComplete(data);
+                else if (data.type === 'chain_error') handleChainError(data);
             } catch (err) {}
         };
         eventSource.onerror = () => { setTimeout(connectSSE, 5000); };
@@ -111,6 +115,37 @@
         showToast('error', 'Scan-Fehler', data.message || 'Ein Fehler ist aufgetreten.');
         const panel = document.getElementById('scanProgressPanel');
         if (panel) panel.classList.add('hidden');
+    }
+
+    function handleChainProgress(data) {
+        // If the modal is open for this chain, update it
+        if (currentChainExecId && currentChainExecId === data.executionId) {
+            // Update status badge
+            const modal = document.getElementById('chainExecDetailModal');
+            if (modal.classList.contains('active')) {
+                // Ideally we just reload the content or append logs.
+                // For smoother UX, let's just reload the detail view
+                // Debounce to prevent flickering if updates are fast
+                // But for now, direct update is fine
+                showChainExecDetail(data.executionId);
+            }
+        }
+    }
+
+    function handleChainComplete(data) {
+        showToast('success', 'Attack Chain abgeschlossen', `Execution #${data.executionId} completed. ${data.findingsCount} findings.`);
+        if (currentChainExecId === data.executionId) {
+            showChainExecDetail(data.executionId);
+        }
+        loadChainStats();
+        loadChainExecutions();
+    }
+
+    function handleChainError(data) {
+        showToast('error', 'Attack Chain Fehler', data.error || 'Unknown error');
+        if (currentChainExecId === data.executionId) {
+            showChainExecDetail(data.executionId);
+        }
     }
 
     // ============================================
@@ -180,8 +215,8 @@
     }
     function riskBadge(r) { return severityBadge(r); }
     function statusBadge(s) {
-        const colors = { completed:'green', running:'blue', pending:'yellow', failed:'red', cancelled:'gray' };
-        const labels = { completed:'Abgeschlossen', running:'Läuft', pending:'Wartend', failed:'Fehlgeschlagen', cancelled:'Abgebrochen' };
+        const colors = { completed:'green', running:'blue', pending:'yellow', failed:'red', cancelled:'gray', started: 'blue' };
+        const labels = { completed:'Abgeschlossen', running:'Läuft', pending:'Wartend', failed:'Fehlgeschlagen', cancelled:'Abgebrochen', started: 'Gestartet' };
         return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     }
     function confidenceBar(val) {
@@ -1234,16 +1269,20 @@
     // ============================================
 
     window.createChainFromCurrentScan = function() {
-        if (currentScanId) createChainFromScan(currentScanId);
+        if (currentScanId) createChainFromScanInternal(currentScanId);
         else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
     };
 
     window.createChainFromDetailScan = function() {
-        if (currentDetailScanId) createChainFromScan(currentDetailScanId);
+        if (currentDetailScanId) createChainFromScanInternal(currentDetailScanId);
         else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
     };
 
-    async function createChainFromScan(scanId) {
+    window.createChainFromScan = async function(scanId) {
+        return createChainFromScanInternal(scanId);
+    };
+
+    async function createChainFromScanInternal(scanId) {
         try {
             const d = await api(`/api/scan/results/${scanId}`);
             const results = d.results || [];
@@ -1313,6 +1352,46 @@
                 step.querySelector('[data-field="name"]').value = 'DB Audit';
                 step.querySelector('[data-field="type"]').value = 'audit';
                 step.querySelector('[data-field="description"]').value = 'Datenbank-Sicherheitsprüfung';
+            }
+
+            // Fetch matched exploits for this scan and add steps
+            try {
+                const exploitData = await api(`/api/exploits/scan/${scanId}`);
+                const exploits = exploitData.exploits || [];
+                // Group by port/service to avoid too many steps
+                const distinctExploits = [];
+                const seenExploits = new Set();
+
+                // Sort by match_confidence descending
+                exploits.sort((a, b) => b.match_confidence - a.match_confidence);
+
+                for (const ex of exploits) {
+                    // Only add if high confidence or critical
+                    if (ex.match_confidence >= 50 || ex.severity === 'critical') {
+                        const key = `${ex.ip_address}:${ex.port}-${ex.exploit_id}`;
+                        if (!seenExploits.has(key)) {
+                            seenExploits.add(key);
+                            distinctExploits.push(ex);
+                        }
+                    }
+                }
+
+                // Limit to top 5 exploits to avoid clutter
+                for (const ex of distinctExploits.slice(0, 5)) {
+                    addChainStep();
+                    step = container.lastElementChild;
+                    step.querySelector('[data-field="name"]').value = `Exploit: ${ex.exploit_title.substring(0, 20)}...`;
+                    step.querySelector('[data-field="type"]').value = 'exploit';
+                    step.querySelector('[data-field="description"]').value = `${ex.exploit_title} (Port ${ex.port})`;
+                    step.querySelector('[data-field="tool"]').value = `exploit-db (ID: ${ex.exploit_db_id})`;
+                }
+
+                if (distinctExploits.length > 0) {
+                    showToast('info', 'Exploits gefunden', `${distinctExploits.length} Exploits wurden zur Kette hinzugefügt.`);
+                }
+
+            } catch(e) {
+                console.warn('Failed to load exploits for chain generation', e);
             }
 
             // Renumber
@@ -1580,12 +1659,22 @@
 
             const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', payload);
             showToast('success', 'Gestartet', `Angriffskette wird ausgeführt. Execution #${d.executionId || d.id || ''}`);
+
+            // Set current exec ID to allow auto-refresh
+            currentChainExecId = d.executionId || d.id;
+
+            // Show details immediately
+            showChainExecDetail(currentChainExecId);
+
             hideExecuteChainModal();
             loadAttackChains(); loadChainStats();
         } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
     window.showChainExecDetail = async function (execId) {
+        // Update global
+        currentChainExecId = execId;
+
         try {
             const d = await api(`/api/attack-chains/executions/${execId}`);
             const ex = d.execution || d;
@@ -1714,7 +1803,10 @@
             }
         });
     }
-    window.hideChainExecDetailModal = function () { document.getElementById('chainExecDetailModal').classList.remove('active'); };
+    window.hideChainExecDetailModal = function () {
+        document.getElementById('chainExecDetailModal').classList.remove('active');
+        currentChainExecId = null; // Reset monitoring
+    };
 
     // ============================================
     // ========== SECURITY AUDIT MODULE ==========
@@ -1868,122 +1960,6 @@
     window.deleteAudit = async function (id) {
         if (!confirm('Audit wirklich löschen?')) return;
         try { await api(`/api/audits/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Audit gelöscht.'); loadAuditHistory(); } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    // ============================================
-    // ========== CREDENTIALS MODULE ==========
-    // ============================================
-
-    async function loadCredentialStats() {
-        try {
-            const d = await api('/api/db-update/stats');
-            const cr = d.credentials;
-            document.getElementById('credStatTotal').textContent = cr.total || 0;
-            document.getElementById('credStatValid').textContent = cr.valid || 0;
-            document.getElementById('credStatInvalid').textContent = (cr.total || 0) - (cr.valid || 0);
-        } catch (e) { console.error('Cred stats error:', e); }
-    }
-
-    async function loadCredentials() {
-        try {
-            const d = await api('/api/credentials');
-            const creds = d.credentials || d || [];
-            const tbody = document.getElementById('credTableBody');
-
-            if (creds.length > 0) {
-                tbody.innerHTML = creds.map(c => `<tr>
-                    <td><strong>${esc(c.name)}</strong></td>
-                    <td><span class="badge badge-blue">${esc(c.credential_type || 'password')}</span></td>
-                    <td>${esc(c.username || '-')}</td>
-                    <td><span class="badge badge-gray">${esc(c.auth_method || 'password')}</span></td>
-                    <td>${esc(c.target_scope || '*')}</td>
-                    <td><span class="badge badge-${c.is_valid ? 'green' : 'red'}">${c.is_valid ? 'Gültig' : 'Ungültig'}</span></td>
-                    <td>${formatDate(c.last_used_at)}</td>
-                    <td>
-                        <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="editCredential(${c.id})"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteCredential(${c.id})"><i class="bi bi-trash"></i></button>
-                        </div>
-                    </td>
-                </tr>`).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Keine Credentials gespeichert</td></tr>';
-            }
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    }
-
-    window.showCredentialModal = function () {
-        document.getElementById('credForm').reset();
-        document.getElementById('credModalTitle').textContent = 'Neues Credential hinzufügen';
-        document.getElementById('credEditId').value = '';
-        toggleCredFields();
-        document.getElementById('credentialModal').classList.add('active');
-    };
-    window.hideCredentialModal = function () { document.getElementById('credentialModal').classList.remove('active'); };
-
-    window.toggleCredFields = function () {
-        const type = document.getElementById('credAuthMethod').value;
-        const sshGroup = document.getElementById('credSshKeyGroup');
-        const pwGroup = document.getElementById('credPasswordGroup');
-        if (type === 'ssh_key' || type === 'ssh_key_password') {
-            sshGroup.classList.remove('hidden');
-        } else {
-            sshGroup.classList.add('hidden');
-        }
-        if (type === 'ssh_key') {
-            pwGroup.classList.add('hidden');
-        } else {
-            pwGroup.classList.remove('hidden');
-        }
-    };
-
-    window.saveCredential = async function (e) {
-        if (e && e.preventDefault) e.preventDefault();
-        try {
-            const editId = document.getElementById('credEditId').value;
-            const data = {
-                name: document.getElementById('credName').value,
-                credential_type: document.getElementById('credAuthMethod').value,
-                username: document.getElementById('credUsername').value,
-                password: document.getElementById('credPassword').value,
-                ssh_key: document.getElementById('credSshKey')?.value || '',
-                auth_method: document.getElementById('credAuthMethod').value,
-                target_scope: document.getElementById('credTargetScope').value,
-                description: document.getElementById('credDescription').value,
-                domain: document.getElementById('credDomain')?.value || ''
-            };
-            if (editId) {
-                await api(`/api/credentials/${editId}`, 'PUT', data);
-                showToast('success', 'Aktualisiert', 'Credential wurde aktualisiert.');
-            } else {
-                await api('/api/credentials', 'POST', data);
-                showToast('success', 'Erstellt', 'Credential wurde hinzugefügt.');
-            }
-            hideCredentialModal(); loadCredentials(); loadCredentialStats();
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    window.editCredential = async function (id) {
-        try {
-            const d = await api(`/api/credentials/${id}`);
-            const c = d.credential || d;
-            document.getElementById('credEditId').value = c.id;
-            document.getElementById('credModalTitle').textContent = 'Credential bearbeiten';
-            document.getElementById('credName').value = c.name || '';
-            document.getElementById('credAuthMethod').value = c.credential_type || 'password';
-            document.getElementById('credUsername').value = c.username || '';
-            document.getElementById('credAuthMethod').value = c.auth_method || 'password';
-            document.getElementById('credTargetScope').value = c.target_scope || '';
-            document.getElementById('credDescription').value = c.description || '';
-            if (document.getElementById('credDomain')) document.getElementById('credDomain').value = c.domain || '';
-            toggleCredFields();
-            document.getElementById('credentialModal').classList.add('active');
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    window.deleteCredential = async function (id) {
-        if (!confirm('Credential wirklich löschen?')) return;
-        try { await api(`/api/credentials/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Credential gelöscht.'); loadCredentials(); loadCredentialStats(); } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
     // ============================================

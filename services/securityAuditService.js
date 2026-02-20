@@ -3,7 +3,7 @@ const logger = require('./logger');
 const VulnerabilityService = require('./vulnerabilityService');
 const FingerprintService = require('./fingerprintService');
 const ExploitService = require('./exploitService');
-const AttackChainService = require('./attackChainService');
+const attackChainService = require('./attackChainService');
 
 class SecurityAuditService {
 
@@ -34,7 +34,7 @@ class SecurityAuditService {
         const fingerprints = FingerprintService.getScanFingerprints(scanId);
         const exploitSummary = ExploitService.getScanExploitSummary(scanId);
         const exploits = ExploitService.getScanExploits(scanId);
-        const chainExecutions = AttackChainService.getExecutions(scanId);
+        const chainExecutions = attackChainService.getExecutions(scanId);
 
         // Calculate security score
         const scoreData = this._calculateScore(scanResults, vulns, exploits, fingerprints);
