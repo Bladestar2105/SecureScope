@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const VulnerabilityService = require('../services/vulnerabilityService');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/rbac');
 const logger = require('../services/logger');
 
 // All vulnerability routes require authentication
@@ -66,7 +67,7 @@ router.get('/:id', (req, res) => {
 });
 
 // POST /api/vulnerabilities - Create new vulnerability (admin only)
-router.post('/', (req, res) => {
+router.post('/', requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
         const { cveId, port, protocol, service, severity, title, description, remediation, cvssScore, referencesUrl } = req.body;
 
@@ -93,7 +94,7 @@ router.post('/', (req, res) => {
 });
 
 // PUT /api/vulnerabilities/:id - Update vulnerability (admin only)
-router.put('/:id', (req, res) => {
+router.put('/:id', requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
@@ -114,7 +115,7 @@ router.put('/:id', (req, res) => {
 });
 
 // DELETE /api/vulnerabilities/:id - Delete vulnerability (admin only)
-router.delete('/:id', (req, res) => {
+router.delete('/:id', requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
         const id = parseInt(req.params.id);
         if (isNaN(id)) {
