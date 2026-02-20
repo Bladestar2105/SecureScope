@@ -358,7 +358,6 @@
             document.getElementById('detailStatus').innerHTML = statusBadge(s.status);
             document.getElementById('detailStarted').textContent = formatDate(s.started_at);
             document.getElementById('detailCompleted').textContent = formatDate(s.completed_at);
-            document.getElementById('detailPorts').textContent = s.port_range || 'Standard';
 
             // Results
             const results = d.results || [];
