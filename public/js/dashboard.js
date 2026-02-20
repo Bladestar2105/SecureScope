@@ -367,14 +367,15 @@
                 tbody.innerHTML = results.map(r => {
                     let svcInfo = esc(r.service || '-');
                     if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
+                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
                     } else if (r.service_product) {
                         let ver = r.service_product;
                         if (r.service_version) ver += ' ' + r.service_version;
                         svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
                     }
+                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
                     return `<tr>
-                    <td>${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
                     <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
                     <td>${riskBadge(r.risk_level)}</td>
                 </tr>`;
