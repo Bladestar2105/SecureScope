@@ -42,8 +42,23 @@ describe('ScannerService._buildNmapArgs', () => {
     test('should include OS detection flags when root (standard scan)', () => {
         process.getuid = jest.fn().mockReturnValue(0);
         const args = scannerService._buildNmapArgs('127.0.0.1', '80', 'standard');
-        // Currently expecting failure as the code doesn't check root yet
-        // So checking if it contains them (it currently does always)
+        expect(args).toContain('-O');
+        expect(args).toContain('--osscan-guess');
+    });
+
+    test('should include OS detection flags when root (quick scan)', () => {
+        process.getuid = jest.fn().mockReturnValue(0);
+        const args = scannerService._buildNmapArgs('127.0.0.1', '80', 'quick');
+        expect(args).toContain('-O');
+        expect(args).toContain('--osscan-guess');
+        // Also verify version intensity is NOT reduced (should stay 5)
+        const intensityIdx = args.indexOf('--version-intensity');
+        expect(args[intensityIdx + 1]).toBe('5');
+    });
+
+    test('should include OS detection flags when root (custom scan)', () => {
+        process.getuid = jest.fn().mockReturnValue(0);
+        const args = scannerService._buildNmapArgs('127.0.0.1', '80', 'custom');
         expect(args).toContain('-O');
         expect(args).toContain('--osscan-guess');
     });
@@ -51,7 +66,6 @@ describe('ScannerService._buildNmapArgs', () => {
     test('should NOT include OS detection flags when not root (standard scan)', () => {
         process.getuid = jest.fn().mockReturnValue(1000);
         const args = scannerService._buildNmapArgs('127.0.0.1', '80', 'standard');
-        // This expectation will fail until I fix the code
         expect(args).not.toContain('-O');
         expect(args).not.toContain('--osscan-guess');
     });

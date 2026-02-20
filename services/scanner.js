@@ -192,20 +192,15 @@ class ScannerService extends EventEmitter {
             '--max-retries', '2',        // Max retries
         ];
 
-        // For quick scan, reduce version detection intensity for speed
-        if (scanType === 'quick') {
-            args[2] = '3';
-        }
-
         // For full scan, increase timeout
         if (scanType === 'full') {
             const idx = args.indexOf('300s');
             if (idx !== -1) args[idx] = '600s';
         }
 
-        // Add OS detection for standard and full scans (requires root)
+        // Add OS detection (requires root)
         const isRoot = process.getuid && process.getuid() === 0;
-        if ((scanType === 'standard' || scanType === 'full') && isRoot) {
+        if (isRoot) {
             args.push('-O', '--osscan-guess');
         }
 
