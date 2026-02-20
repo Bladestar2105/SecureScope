@@ -3,8 +3,8 @@ services:
     image: ghcr.io/bladestar2105/securescope:latest
     container_name: securescope
     restart: unless-stopped
-    ports:
-      - "${PORT:-3000}:3000"
+    # Use host network mode for proper scanning (ARP, OS detection)
+    network_mode: host
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -12,14 +12,12 @@ services:
       - CSRF_SECRET=${CSRF_SECRET:-change_this_csrf_secret_in_production}
       - DATABASE_PATH=/app/database/securescope.db
       - LOG_LEVEL=${LOG_LEVEL:-info}
-      - SCAN_TIMEOUT=${SCAN_TIMEOUT:-300000}
+      - SCAN_TIMEOUT=${SCAN_TIMEOUT:-900000}
       - MAX_CONCURRENT_SCANS=${MAX_CONCURRENT_SCANS:-3}
       - ALLOW_EXTERNAL_SCANS=${ALLOW_EXTERNAL_SCANS:-false}
     volumes:
       - securescope_data:/app/database
       - securescope_logs:/app/logs
-    networks:
-      - securescope_net
     # Healthcheck is defined in Dockerfile
 
 volumes:
@@ -27,7 +25,3 @@ volumes:
     driver: local
   securescope_logs:
     driver: local
-
-networks:
-  securescope_net:
-    driver: bridge
