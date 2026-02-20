@@ -352,7 +352,7 @@
         try {
             const d = await api(`/api/scan/${scanId}`);
             const s = d.scan;
-            document.getElementById('detailScanId').textContent = '#' + s.id;
+            document.getElementById('detailId').textContent = '#' + s.id;
             document.getElementById('detailTarget').textContent = s.target;
             document.getElementById('detailType').innerHTML = `<span class="badge badge-blue">${esc(s.scan_type)}</span>`;
             document.getElementById('detailStatus').innerHTML = statusBadge(s.status);
