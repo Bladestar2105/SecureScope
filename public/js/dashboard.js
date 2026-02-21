@@ -353,8 +353,8 @@
                                     <strong style="font-size:1rem">${esc(ip)}</strong>
                                     <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
                                 </div>
-                                <button class="btn btn-outline btn-sm" onclick="showExecuteChainModal(null, ${scanId}, '${esc(ip)}')">
-                                    <i class="bi bi-play-circle"></i> Chain ausführen
+                                <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-diagram-3"></i> Chain erstellen
                                 </button>
                             </div>
                         </td>
@@ -427,22 +427,50 @@
             const results = d.results || [];
             const tbody = document.getElementById('detailResultsBody');
             if (results.length > 0) {
-                tbody.innerHTML = results.map(r => {
-                    let svcInfo = esc(r.service || '-');
-                    if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
-                    } else if (r.service_product) {
-                        let ver = r.service_product;
-                        if (r.service_version) ver += ' ' + r.service_version;
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
-                    }
-                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
-                    return `<tr>
-                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
-                    <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
-                    <td>${riskBadge(r.risk_level)}</td>
-                </tr>`;
-                }).join('');
+                // Group by IP
+                const grouped = {};
+                results.forEach(r => {
+                    if (!grouped[r.ip_address]) grouped[r.ip_address] = [];
+                    grouped[r.ip_address].push(r);
+                });
+
+                let html = '';
+                for (const [ip, ports] of Object.entries(grouped)) {
+                    // Find first OS info
+                    const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
+
+                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
+                        <td colspan="6" style="padding:0.75rem 1rem">
+                            <div class="d-flex justify-between align-center">
+                                <div>
+                                    <strong style="font-size:1rem">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                </div>
+                                <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-diagram-3"></i> Chain erstellen
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    html += ports.map(r => {
+                        let svcInfo = esc(r.service || '-');
+                        if (r.banner) {
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
+                        } else if (r.service_product) {
+                            let ver = r.service_product;
+                            if (r.service_version) ver += ' ' + r.service_version;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                        }
+
+                        return `<tr>
+                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
+                        <td>${riskBadge(r.risk_level)}</td>
+                    </tr>`;
+                    }).join('');
+                }
+                tbody.innerHTML = html;
             } else {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Keine Ergebnisse</td></tr>';
             }
@@ -1268,58 +1296,80 @@
     // ========== ATTACK CHAINS MODULE ==========
     // ============================================
 
-    window.createChainFromCurrentScan = function() {
-        if (currentScanId) createChainFromScanInternal(currentScanId);
-        else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
-    };
-
-    window.createChainFromDetailScan = function() {
-        if (currentDetailScanId) createChainFromScanInternal(currentDetailScanId);
-        else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
-    };
-
-    window.createChainFromScan = async function(scanId) {
-        return createChainFromScanInternal(scanId);
-    };
-
-    async function createChainFromScanInternal(scanId) {
+    window.showCreateChainForTargetModal = async function(scanId, ip) {
         try {
+            document.getElementById('chainTargetScanId').value = scanId;
+            document.getElementById('chainTargetIP').value = ip;
+            const container = document.getElementById('chainTargetServices');
+            container.innerHTML = '<div class="text-center"><div class="spinner"></div> Lade Services...</div>';
+            document.getElementById('chainTargetModal').classList.add('active');
+
             const d = await api(`/api/scan/results/${scanId}`);
-            const results = d.results || [];
+            const results = (d.results || []).filter(r => r.ip_address === ip && r.state === 'open');
 
             if (results.length === 0) {
-                showToast('warning', 'Hinweis', 'Keine Ergebnisse in diesem Scan gefunden.');
+                container.innerHTML = '<div class="text-muted text-center">Keine offenen Ports gefunden.</div>';
                 return;
             }
 
-            const services = [...new Set(results.map(r => r.service).filter(s => s && s !== 'unknown'))];
-            const ports = [...new Set(results.map(r => r.port))];
+            container.innerHTML = results.map(r => {
+                const svc = r.service || 'unknown';
+                const label = `${r.port}/${r.protocol} - ${svc}${r.service_product ? ' (' + r.service_product + ')' : ''}`;
+                return `<div class="form-group mb-1" style="display:flex;align-items:center;gap:0.5rem">
+                    <input type="checkbox" class="chain-service-select" value="${r.port}" data-service="${esc(svc)}" id="chk_svc_${r.port}" checked>
+                    <label for="chk_svc_${r.port}" style="margin:0;cursor:pointer">${esc(label)}</label>
+                </div>`;
+            }).join('');
 
-            // Try to find Target IP if it's a single target scan
-            const uniqueIPs = [...new Set(results.map(r => r.ip_address))];
-            const targetInfo = uniqueIPs.length === 1 ? `Target: ${uniqueIPs[0]}` : `Targets: ${uniqueIPs.length} Hosts`;
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+            document.getElementById('chainTargetModal').classList.remove('active');
+        }
+    };
 
+    window.hideChainTargetModal = function() {
+        document.getElementById('chainTargetModal').classList.remove('active');
+    };
+
+    window.createChainFromTarget = async function() {
+        const scanId = parseInt(document.getElementById('chainTargetScanId').value);
+        const ip = document.getElementById('chainTargetIP').value;
+        const checkboxes = document.querySelectorAll('.chain-service-select:checked');
+
+        if (checkboxes.length === 0) {
+            showToast('warning', 'Hinweis', 'Bitte mindestens einen Service auswählen.');
+            return;
+        }
+
+        const selectedPorts = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        const selectedServices = Array.from(checkboxes).map(cb => cb.dataset.service);
+
+        hideChainTargetModal();
+        await generateChainForTargetInternal(scanId, ip, selectedPorts, selectedServices);
+    };
+
+    async function generateChainForTargetInternal(scanId, targetIp, targetPorts, targetServices) {
+         try {
             showChainModal();
 
             // Populate form
-            document.getElementById('chainFormName').value = `Chain from Scan #${scanId}`;
-            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${targetInfo}, ${results.length} offene Ports)`;
-            document.getElementById('chainFormServices').value = services.join(', ');
-            document.getElementById('chainFormPorts').value = ports.join(', ');
+            document.getElementById('chainFormName').value = `Chain for ${targetIp}`;
+            document.getElementById('chainFormDesc').value = `Automatisch generiert für ${targetIp} (Ports: ${targetPorts.join(', ')})`;
+            document.getElementById('chainFormServices').value = [...new Set(targetServices)].join(', ');
+            document.getElementById('chainFormPorts').value = targetPorts.join(', ');
 
             // Generate steps
             const container = document.getElementById('chainStepsContainer');
             container.innerHTML = ''; // Clear default step
 
-            // Add initial Recon step
+            // Add initial Recon step (always good)
             addChainStep();
             let step = container.lastElementChild;
             step.querySelector('[data-field="name"]').value = 'Initial Recon';
             step.querySelector('[data-field="type"]').value = 'recon';
-            step.querySelector('[data-field="description"]').value = 'Fingerprinting aller offenen Ports';
+            step.querySelector('[data-field="description"]').value = `Fingerprinting für ${targetIp}`;
 
-            // Add steps for specific services
-            const uniqueServices = new Set(services);
+            const uniqueServices = new Set(targetServices);
 
             if (uniqueServices.has('http') || uniqueServices.has('https') || uniqueServices.has('http-alt') || uniqueServices.has('ssl/http')) {
                 addChainStep();
@@ -1330,7 +1380,7 @@
                 step.querySelector('[data-field="tool"]').value = 'nikto';
             }
 
-            if (uniqueServices.has('ssh')) {
+             if (uniqueServices.has('ssh')) {
                 addChainStep();
                 step = container.lastElementChild;
                 step.querySelector('[data-field="name"]').value = 'SSH Audit';
@@ -1346,7 +1396,7 @@
                 step.querySelector('[data-field="description"]').value = 'Prüfung auf anonymen Login';
             }
 
-            if (uniqueServices.has('mysql') || uniqueServices.has('postgresql') || uniqueServices.has('mssql')) {
+             if (uniqueServices.has('mysql') || uniqueServices.has('postgresql') || uniqueServices.has('mssql')) {
                  addChainStep();
                 step = container.lastElementChild;
                 step.querySelector('[data-field="name"]').value = 'DB Audit';
@@ -1358,17 +1408,23 @@
             try {
                 const exploitData = await api(`/api/exploits/scan/${scanId}`);
                 const exploits = exploitData.exploits || [];
+
+                // Filter exploits for this IP and selected ports
+                const filteredExploits = exploits.filter(ex =>
+                    ex.ip_address === targetIp && targetPorts.includes(ex.port)
+                );
+
                 // Group by port/service to avoid too many steps
                 const distinctExploits = [];
                 const seenExploits = new Set();
 
                 // Sort by match_confidence descending
-                exploits.sort((a, b) => b.match_confidence - a.match_confidence);
+                filteredExploits.sort((a, b) => b.match_confidence - a.match_confidence);
 
-                for (const ex of exploits) {
-                    // Only add if high confidence or critical
-                    if (ex.match_confidence >= 50 || ex.severity === 'critical') {
-                        const key = `${ex.ip_address}:${ex.port}-${ex.exploit_id}`;
+                for (const ex of filteredExploits) {
+                    // Only add if high confidence or critical (or at least > 40)
+                    if (ex.match_confidence >= 40 || ex.severity === 'critical' || ex.severity === 'high') {
+                        const key = `${ex.port}-${ex.exploit_id}`;
                         if (!seenExploits.has(key)) {
                             seenExploits.add(key);
                             distinctExploits.push(ex);
@@ -1376,8 +1432,8 @@
                     }
                 }
 
-                // Limit to top 5 exploits to avoid clutter
-                for (const ex of distinctExploits.slice(0, 5)) {
+                // Limit exploits to top 10 to avoid huge chains
+                for (const ex of distinctExploits.slice(0, 10)) {
                     addChainStep();
                     step = container.lastElementChild;
                     step.querySelector('[data-field="name"]').value = `Exploit: ${ex.exploit_title.substring(0, 20)}...`;
@@ -1388,6 +1444,8 @@
 
                 if (distinctExploits.length > 0) {
                     showToast('info', 'Exploits gefunden', `${distinctExploits.length} Exploits wurden zur Kette hinzugefügt.`);
+                } else if (exploits.length > 0) {
+                     showToast('info', 'Info', 'Keine Exploits für die ausgewählten Services gefunden.');
                 }
 
             } catch(e) {
@@ -1397,7 +1455,7 @@
             // Renumber
             renumberSteps();
 
-            showToast('info', 'Chain generiert', 'Angriffskette wurde basierend auf Scan-Ergebnissen vorbereitet.');
+            showToast('info', 'Chain generiert', 'Angriffskette wurde vorbereitet.');
 
         } catch (e) {
             showToast('error', 'Fehler', e.message);
