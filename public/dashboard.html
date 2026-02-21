@@ -48,6 +48,9 @@
                     <div class="nav-item" data-view="exploits" onclick="switchView('exploits')">
                         <i class="bi bi-database-exclamation"></i><span>Exploit-DB</span>
                     </div>
+                    <div class="nav-item" data-view="ghdb" onclick="switchView('ghdb')">
+                        <i class="bi bi-google"></i><span>Google Hacking DB</span>
+                    </div>
                     <div class="nav-item" data-view="attack-chains" onclick="switchView('attack-chains')">
                         <i class="bi bi-diagram-3"></i><span>Angriffsketten</span>
                     </div>
@@ -401,14 +404,24 @@
                     <div class="card-header">
                         <h3><i class="bi bi-arrow-repeat mr-1"></i> Datenbank-Verwaltung</h3>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-primary btn-sm" onclick="syncExploitDB()" id="exploitSyncBtn"><i class="bi bi-cloud-download"></i> ExploitDB herunterladen</button>
-                            <button class="btn btn-outline btn-sm" onclick="showExploitModal()"><i class="bi bi-plus"></i> Manuell hinzufügen</button>
+                            <button class="btn btn-primary btn-sm" onclick="syncExploitDB()" id="exploitSyncBtn"><i class="bi bi-cloud-download"></i> ExploitDB Sync</button>
+                            <button class="btn btn-primary btn-sm" onclick="syncMetasploit()" id="msfSyncBtn" style="background: #e65100; border-color: #e65100;"><i class="bi bi-cloud-download"></i> Metasploit Sync</button>
+                            <button class="btn btn-outline btn-sm" onclick="showExploitModal()"><i class="bi bi-plus"></i> Manuell</button>
                         </div>
                     </div>
                     <div class="card-body">
                         <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
-                            <i class="bi bi-info-circle mr-1"></i> Quelle: <a href="https://gitlab.com/exploit-database/exploitdb" target="_blank" style="color:var(--accent-blue)">exploit-database/exploitdb</a> (GitLab) — Offizielles Exploit-DB Repository mit Exploit-Code und Metadaten.
+                            <i class="bi bi-info-circle mr-1"></i> Quellen: <a href="https://gitlab.com/exploit-database/exploitdb" target="_blank" style="color:var(--accent-blue)">ExploitDB</a> & <a href="https://github.com/rapid7/metasploit-framework" target="_blank" style="color:var(--accent-blue)">Metasploit Framework</a>.
                         </p>
+                        <div id="msfSyncProgress" class="hidden" style="margin-bottom:.75rem">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                                <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
+                                    <div id="msfSyncProgressBar" style="width:0%;height:100%;background:#e65100;transition:width .3s;border-radius:var(--radius-sm)"></div>
+                                </div>
+                                <span id="msfSyncProgressPct" style="font-size:.8rem;color:var(--text-secondary);min-width:40px">0%</span>
+                            </div>
+                            <div id="msfSyncProgressMsg" style="font-size:.8rem;color:var(--text-secondary)"></div>
+                        </div>
                         <div id="exploitSyncProgress" class="hidden" style="margin-bottom:.75rem">
                             <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
                                 <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
@@ -431,12 +444,14 @@
                     </div>
                     <div class="card-body">
                         <div class="filters-bar">
+                            <div class="form-group"><label>Quelle</label>
+                                <select id="exploitFilterSource" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="exploit-db">ExploitDB</option><option value="metasploit">Metasploit</option></select></div>
                             <div class="form-group"><label>Severity</label>
                                 <select id="exploitFilterSeverity" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="critical">Kritisch</option><option value="high">Hoch</option><option value="medium">Mittel</option><option value="low">Niedrig</option></select></div>
                             <div class="form-group"><label>Plattform</label>
                                 <select id="exploitFilterPlatform" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="Linux">Linux</option><option value="Windows">Windows</option><option value="Multi">Multi</option></select></div>
                             <div class="form-group"><label>Typ</label>
-                                <select id="exploitFilterType" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="remote">Remote</option><option value="local">Local</option></select></div>
+                                <select id="exploitFilterType" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="remote">Remote</option><option value="local">Local</option><option value="auxiliary">Auxiliary</option><option value="payload">Payload</option></select></div>
                             <div class="form-group"><label>Suche</label><input type="text" id="exploitFilterSearch" class="form-control" placeholder="CVE, Titel, Service..." oninput="debounce(loadExploits,500)()"></div>
                         </div>
                         <div class="table-container"><table class="data-table"><thead><tr><th>CVE / EDB</th><th>Titel</th><th>Service</th><th>Port</th><th>Plattform</th><th>Typ</th><th>Severity</th><th>CVSS</th><th>Zuverlässigkeit</th><th>Quelle</th></tr></thead>
@@ -444,6 +459,58 @@
                         <div class="loading-overlay hidden" id="exploitLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Exploits...</span></div>
                         <div class="empty-state hidden" id="exploitEmpty"><i class="bi bi-database-exclamation"></i><h4>Keine Exploits gefunden</h4></div>
                         <div id="exploitPagination" class="hidden"><div class="pagination" id="exploitPaginationBtns"></div><div class="pagination-info" id="exploitPaginationInfo"></div></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ========== VIEW: Google Hacking DB ========== -->
+            <section class="view-section" id="view-ghdb">
+                <!-- Stats -->
+                <div class="stats-grid mb-3">
+                    <div class="stat-card"><div class="stat-icon blue"><i class="bi bi-google"></i></div><div class="stat-info"><h4>GHDB Einträge</h4><div class="stat-value" id="ghdbStatTotal">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon purple"><i class="bi bi-tags"></i></div><div class="stat-info"><h4>Kategorien</h4><div class="stat-value" id="ghdbStatCats">0</div></div></div>
+                    <div class="stat-card"><div class="stat-icon yellow"><i class="bi bi-clock-history"></i></div><div class="stat-info"><h4>Letztes Update</h4><div class="stat-value" id="ghdbStatLastSync" style="font-size:.85rem">Nie</div></div></div>
+                </div>
+                <!-- DB Update Panel -->
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h3><i class="bi bi-arrow-repeat mr-1"></i> Datenbank-Verwaltung</h3>
+                        <div class="d-flex gap-1">
+                            <button class="btn btn-primary btn-sm" onclick="syncGHDB()" id="ghdbSyncBtn"><i class="bi bi-cloud-download"></i> GHDB Synchronisieren</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <p style="font-size:.85rem;color:var(--text-secondary);margin-bottom:.75rem">
+                            <i class="bi bi-info-circle mr-1"></i> Quelle: <a href="https://gitlab.com/exploit-database/exploitdb" target="_blank" style="color:var(--accent-blue)">ExploitDB (GHDB)</a> — Google Dorks für Security Assessments.
+                        </p>
+                        <div id="ghdbSyncProgress" class="hidden" style="margin-bottom:.75rem">
+                            <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.5rem">
+                                <div style="flex:1;background:var(--bg-tertiary);border-radius:var(--radius-sm);height:8px;overflow:hidden">
+                                    <div id="ghdbSyncProgressBar" style="width:0%;height:100%;background:var(--accent-blue);transition:width .3s;border-radius:var(--radius-sm)"></div>
+                                </div>
+                                <span id="ghdbSyncProgressPct" style="font-size:.8rem;color:var(--text-secondary);min-width:40px">0%</span>
+                            </div>
+                            <div id="ghdbSyncProgressMsg" style="font-size:.8rem;color:var(--text-secondary)"></div>
+                        </div>
+                        <div id="ghdbSyncStatus" class="hidden" style="padding:.75rem;background:var(--accent-green-bg);border:1px solid rgba(34,197,94,.2);border-radius:var(--radius-sm);font-size:.85rem;color:var(--accent-green)">
+                            <i class="bi bi-check-circle mr-1"></i><span id="ghdbSyncStatusText"></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Main Table -->
+                <div class="card">
+                    <div class="card-header"><h3><i class="bi bi-google mr-1"></i> Google Hacking Database</h3></div>
+                    <div class="card-body">
+                        <div class="filters-bar">
+                            <div class="form-group"><label>Kategorie</label>
+                                <select id="ghdbFilterCategory" class="form-control" onchange="loadGHDB()"><option value="">Alle</option></select></div>
+                            <div class="form-group"><label>Suche</label><input type="text" id="ghdbFilterSearch" class="form-control" placeholder="Dork, Beschreibung..." oninput="debounce(loadGHDB,500)()"></div>
+                        </div>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>ID</th><th>Kategorie</th><th>Query (Dork)</th><th>Beschreibung</th><th>Datum</th><th>Aktion</th></tr></thead>
+                        <tbody id="ghdbTableBody"></tbody></table></div>
+                        <div class="loading-overlay hidden" id="ghdbLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade GHDB...</span></div>
+                        <div class="empty-state hidden" id="ghdbEmpty"><i class="bi bi-google"></i><h4>Keine Einträge gefunden</h4></div>
+                        <div id="ghdbPagination" class="hidden"><div class="pagination" id="ghdbPaginationBtns"></div><div class="pagination-info" id="ghdbPaginationInfo"></div></div>
                     </div>
                 </div>
             </section>

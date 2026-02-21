@@ -279,6 +279,40 @@ router.post('/sync/exploits', requireAuth, requirePermission('vulnerabilities:ed
     }
 });
 
+// ============================================
+// GHDB Sync - runs in worker process
+// ============================================
+router.post('/sync/ghdb', requireAuth, requirePermission('vulnerabilities:edit'), async (req, res) => {
+    if (activeSyncs.has('ghdb')) {
+        return res.status(409).json({ error: 'GHDB-Sync läuft bereits' });
+    }
+    try {
+        spawnSyncWorker('ghdb', req.session.userId);
+        res.json({ success: true, message: 'GHDB-Sync gestartet. Fortschritt über SSE verfügbar.', async: true });
+    } catch (err) {
+        activeSyncs.delete('ghdb');
+        logger.error('Error starting GHDB sync worker:', err);
+        res.status(500).json({ error: 'Fehler beim Starten des GHDB-Syncs' });
+    }
+});
+
+// ============================================
+// Metasploit Sync - runs in worker process
+// ============================================
+router.post('/sync/metasploit', requireAuth, requirePermission('vulnerabilities:edit'), async (req, res) => {
+    if (activeSyncs.has('metasploit')) {
+        return res.status(409).json({ error: 'Metasploit-Sync läuft bereits' });
+    }
+    try {
+        spawnSyncWorker('metasploit', req.session.userId);
+        res.json({ success: true, message: 'Metasploit-Sync gestartet. Fortschritt über SSE verfügbar.', async: true });
+    } catch (err) {
+        activeSyncs.delete('metasploit');
+        logger.error('Error starting Metasploit sync worker:', err);
+        res.status(500).json({ error: 'Fehler beim Starten des Metasploit-Syncs' });
+    }
+});
+
 // Get exploit code
 router.get('/exploits/code/:id', requireAuth, (req, res) => {
     try {
