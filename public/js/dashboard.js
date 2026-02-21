@@ -8,6 +8,8 @@
     let csrfToken = null, currentUser = null, currentScanId = null;
     let currentDetailScanId = null, eventSource = null, previousView = 'dashboard';
     let userRoles = [], userPermissions = [];
+    let currentShellWs = null, currentTerm = null, fitAddon = null;
+    let currentChainExecId = null;
 
     // ============================================
     // Toast System
@@ -79,6 +81,9 @@
                 if (data.type === 'scan_progress') updateScanProgress(data);
                 else if (data.type === 'scan_complete') handleScanComplete(data);
                 else if (data.type === 'scan_error') handleScanError(data);
+                else if (data.type === 'chain_progress') handleChainProgress(data);
+                else if (data.type === 'chain_complete') handleChainComplete(data);
+                else if (data.type === 'chain_error') handleChainError(data);
             } catch (err) {}
         };
         eventSource.onerror = () => { setTimeout(connectSSE, 5000); };
@@ -110,6 +115,37 @@
         showToast('error', 'Scan-Fehler', data.message || 'Ein Fehler ist aufgetreten.');
         const panel = document.getElementById('scanProgressPanel');
         if (panel) panel.classList.add('hidden');
+    }
+
+    function handleChainProgress(data) {
+        // If the modal is open for this chain, update it
+        if (currentChainExecId && currentChainExecId === data.executionId) {
+            // Update status badge
+            const modal = document.getElementById('chainExecDetailModal');
+            if (modal.classList.contains('active')) {
+                // Ideally we just reload the content or append logs.
+                // For smoother UX, let's just reload the detail view
+                // Debounce to prevent flickering if updates are fast
+                // But for now, direct update is fine
+                showChainExecDetail(data.executionId);
+            }
+        }
+    }
+
+    function handleChainComplete(data) {
+        showToast('success', 'Attack Chain abgeschlossen', `Execution #${data.executionId} completed. ${data.findingsCount} findings.`);
+        if (currentChainExecId === data.executionId) {
+            showChainExecDetail(data.executionId);
+        }
+        loadChainStats();
+        loadChainExecutions();
+    }
+
+    function handleChainError(data) {
+        showToast('error', 'Attack Chain Fehler', data.error || 'Unknown error');
+        if (currentChainExecId === data.executionId) {
+            showChainExecDetail(data.executionId);
+        }
     }
 
     // ============================================
@@ -179,8 +215,8 @@
     }
     function riskBadge(r) { return severityBadge(r); }
     function statusBadge(s) {
-        const colors = { completed:'green', running:'blue', pending:'yellow', failed:'red', cancelled:'gray' };
-        const labels = { completed:'Abgeschlossen', running:'Läuft', pending:'Wartend', failed:'Fehlgeschlagen', cancelled:'Abgebrochen' };
+        const colors = { completed:'green', running:'blue', pending:'yellow', failed:'red', cancelled:'gray', started: 'blue' };
+        const labels = { completed:'Abgeschlossen', running:'Läuft', pending:'Wartend', failed:'Fehlgeschlagen', cancelled:'Abgebrochen', started: 'Gestartet' };
         return `<span class="badge badge-${colors[s] || 'gray'}">${labels[s] || s}</span>`;
     }
     function confidenceBar(val) {
@@ -297,22 +333,50 @@
             const tbody = document.getElementById('resultsTableBody');
             if (results.length > 0) {
                 document.getElementById('resultsEmpty').classList.add('hidden');
-                tbody.innerHTML = results.map(r => {
-                    let svcInfo = esc(r.service || '-');
-                    if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
-                    } else if (r.service_product) {
-                        let ver = r.service_product;
-                        if (r.service_version) ver += ' ' + r.service_version;
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
-                    }
-                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
-                    return `<tr>
-                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
-                    <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
-                    <td>${riskBadge(r.risk_level)}</td>
-                </tr>`;
-                }).join('');
+
+                // Group by IP
+                const grouped = {};
+                results.forEach(r => {
+                    if (!grouped[r.ip_address]) grouped[r.ip_address] = [];
+                    grouped[r.ip_address].push(r);
+                });
+
+                let html = '';
+                for (const [ip, ports] of Object.entries(grouped)) {
+                    // Find first OS info
+                    const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
+
+                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
+                        <td colspan="6" style="padding:0.75rem 1rem">
+                            <div class="d-flex justify-between align-center">
+                                <div>
+                                    <strong style="font-size:1rem">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                </div>
+                                <button class="btn btn-outline btn-sm" onclick="showExecuteChainModal(null, ${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-play-circle"></i> Chain ausführen
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    html += ports.map(r => {
+                        let svcInfo = esc(r.service || '-');
+                        if (r.banner) {
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
+                        } else if (r.service_product) {
+                            let ver = r.service_product;
+                            if (r.service_version) ver += ' ' + r.service_version;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                        }
+                        return `<tr>
+                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
+                        <td>${riskBadge(r.risk_level)}</td>
+                    </tr>`;
+                    }).join('');
+                }
+                tbody.innerHTML = html;
             } else {
                 document.getElementById('resultsEmpty').classList.remove('hidden');
                 tbody.innerHTML = '';
@@ -358,7 +422,6 @@
             document.getElementById('detailStatus').innerHTML = statusBadge(s.status);
             document.getElementById('detailStarted').textContent = formatDate(s.started_at);
             document.getElementById('detailCompleted').textContent = formatDate(s.completed_at);
-            document.getElementById('detailPorts').textContent = s.port_range || 'Standard';
 
             // Results
             const results = d.results || [];
@@ -367,14 +430,15 @@
                 tbody.innerHTML = results.map(r => {
                     let svcInfo = esc(r.service || '-');
                     if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
+                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
                     } else if (r.service_product) {
                         let ver = r.service_product;
                         if (r.service_version) ver += ' ' + r.service_version;
                         svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
                     }
+                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
                     return `<tr>
-                    <td>${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
                     <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
                     <td>${riskBadge(r.risk_level)}</td>
                 </tr>`;
@@ -1205,16 +1269,20 @@
     // ============================================
 
     window.createChainFromCurrentScan = function() {
-        if (currentScanId) createChainFromScan(currentScanId);
+        if (currentScanId) createChainFromScanInternal(currentScanId);
         else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
     };
 
     window.createChainFromDetailScan = function() {
-        if (currentDetailScanId) createChainFromScan(currentDetailScanId);
+        if (currentDetailScanId) createChainFromScanInternal(currentDetailScanId);
         else showToast('warning', 'Hinweis', 'Kein Scan ausgewählt');
     };
 
-    async function createChainFromScan(scanId) {
+    window.createChainFromScan = async function(scanId) {
+        return createChainFromScanInternal(scanId);
+    };
+
+    async function createChainFromScanInternal(scanId) {
         try {
             const d = await api(`/api/scan/results/${scanId}`);
             const results = d.results || [];
@@ -1227,11 +1295,15 @@
             const services = [...new Set(results.map(r => r.service).filter(s => s && s !== 'unknown'))];
             const ports = [...new Set(results.map(r => r.port))];
 
+            // Try to find Target IP if it's a single target scan
+            const uniqueIPs = [...new Set(results.map(r => r.ip_address))];
+            const targetInfo = uniqueIPs.length === 1 ? `Target: ${uniqueIPs[0]}` : `Targets: ${uniqueIPs.length} Hosts`;
+
             showChainModal();
 
             // Populate form
             document.getElementById('chainFormName').value = `Chain from Scan #${scanId}`;
-            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${results.length} offene Ports)`;
+            document.getElementById('chainFormDesc').value = `Automatisch generiert basierend auf Scan #${scanId} (${targetInfo}, ${results.length} offene Ports)`;
             document.getElementById('chainFormServices').value = services.join(', ');
             document.getElementById('chainFormPorts').value = ports.join(', ');
 
@@ -1280,6 +1352,46 @@
                 step.querySelector('[data-field="name"]').value = 'DB Audit';
                 step.querySelector('[data-field="type"]').value = 'audit';
                 step.querySelector('[data-field="description"]').value = 'Datenbank-Sicherheitsprüfung';
+            }
+
+            // Fetch matched exploits for this scan and add steps
+            try {
+                const exploitData = await api(`/api/exploits/scan/${scanId}`);
+                const exploits = exploitData.exploits || [];
+                // Group by port/service to avoid too many steps
+                const distinctExploits = [];
+                const seenExploits = new Set();
+
+                // Sort by match_confidence descending
+                exploits.sort((a, b) => b.match_confidence - a.match_confidence);
+
+                for (const ex of exploits) {
+                    // Only add if high confidence or critical
+                    if (ex.match_confidence >= 50 || ex.severity === 'critical') {
+                        const key = `${ex.ip_address}:${ex.port}-${ex.exploit_id}`;
+                        if (!seenExploits.has(key)) {
+                            seenExploits.add(key);
+                            distinctExploits.push(ex);
+                        }
+                    }
+                }
+
+                // Limit to top 5 exploits to avoid clutter
+                for (const ex of distinctExploits.slice(0, 5)) {
+                    addChainStep();
+                    step = container.lastElementChild;
+                    step.querySelector('[data-field="name"]').value = `Exploit: ${ex.exploit_title.substring(0, 20)}...`;
+                    step.querySelector('[data-field="type"]').value = 'exploit';
+                    step.querySelector('[data-field="description"]').value = `${ex.exploit_title} (Port ${ex.port})`;
+                    step.querySelector('[data-field="tool"]').value = `exploit-db (ID: ${ex.exploit_db_id})`;
+                }
+
+                if (distinctExploits.length > 0) {
+                    showToast('info', 'Exploits gefunden', `${distinctExploits.length} Exploits wurden zur Kette hinzugefügt.`);
+                }
+
+            } catch(e) {
+                console.warn('Failed to load exploits for chain generation', e);
             }
 
             // Renumber
@@ -1446,16 +1558,79 @@
         try { await api(`/api/attack-chains/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Angriffskette gelöscht.'); loadAttackChains(); loadChainStats(); } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
-    window.showExecuteChainModal = function (chainId) {
-        document.getElementById('chainExecChainId').value = chainId;
+    window.showExecuteChainModal = function (chainId, preSelectedScanId, preSelectedTargetIp) {
+        // Clear previous state
+        const chainSel = document.getElementById('chainExecChainId');
+        if (chainId) {
+            // Ensure chains are loaded
+            api('/api/attack-chains').then(d => {
+                const chains = d.chains || d || [];
+                chainSel.innerHTML = '<option value="">Chain wählen...</option>' +
+                    chains.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                chainSel.value = chainId;
+            }).catch(() => {});
+        } else {
+            // Load chains if dropdown empty
+            if (chainSel.options.length <= 1) {
+                api('/api/attack-chains').then(d => {
+                    const chains = d.chains || d || [];
+                    chainSel.innerHTML = '<option value="">Chain wählen...</option>' +
+                        chains.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+                });
+            }
+        }
+
+        document.getElementById('chainExecLHOST').value = window.location.hostname;
+        document.getElementById('chainExecLPORT').value = '4444';
         document.getElementById('chainExecPanel').classList.remove('hidden');
-        // Load available scans
-        api('/api/scan/history').then(d => {
-            const sel = document.getElementById('chainExecScanId');
-            sel.innerHTML = '<option value="">Scan wählen...</option>' +
+
+        // Setup Scan ID Dropdown
+        const scanSel = document.getElementById('chainExecScanId');
+        const ipSel = document.getElementById('chainExecTargetIp');
+
+        // Reset IP selector
+        ipSel.innerHTML = '<option value="">Bitte Scan wählen...</option>';
+
+        // Setup listener for Scan ID change
+        scanSel.onchange = async () => {
+            const sid = scanSel.value;
+            if (!sid) {
+                ipSel.innerHTML = '<option value="">Bitte Scan wählen...</option>';
+                return;
+            }
+            try {
+                ipSel.innerHTML = '<option>Lade IPs...</option>';
+                const res = await api(`/api/scan/results/${sid}`);
+                const uniqueIPs = [...new Set((res.results || []).map(r => r.ip_address))];
+
+                if (uniqueIPs.length > 0) {
+                    ipSel.innerHTML = uniqueIPs.map(ip => `<option value="${esc(ip)}">${esc(ip)}</option>`).join('');
+                    // Auto-select if only one
+                    if (uniqueIPs.length === 1) ipSel.value = uniqueIPs[0];
+                } else {
+                    ipSel.innerHTML = '<option value="">Keine IPs gefunden</option>';
+                }
+            } catch(e) {
+                ipSel.innerHTML = '<option value="">Fehler beim Laden</option>';
+            }
+        };
+
+        // Load scans
+        api('/api/scan/history').then(async d => {
+            scanSel.innerHTML = '<option value="">Scan wählen...</option>' +
                 (d.scans || []).filter(s => s.status === 'completed').map(s =>
                     `<option value="${s.id}">#${s.id} - ${esc(s.target)} (${formatDate(s.started_at)})</option>`
                 ).join('');
+
+            // Handle Pre-Selection
+            if (preSelectedScanId) {
+                scanSel.value = preSelectedScanId;
+                // Trigger change to load IPs
+                await scanSel.onchange();
+                if (preSelectedTargetIp) {
+                    ipSel.value = preSelectedTargetIp;
+                }
+            }
         }).catch(() => {});
     };
     window.hideExecuteChainModal = function () { document.getElementById('chainExecPanel').classList.add('hidden'); };
@@ -1464,20 +1639,51 @@
         if (e && e.preventDefault) e.preventDefault();
         const chainId = document.getElementById('chainExecChainId').value;
         const scanId = document.getElementById('chainExecScanId').value;
+        const targetIp = document.getElementById('chainExecTargetIp').value;
+        const targetPort = document.getElementById('chainExecTargetPort').value;
+        const lhost = document.getElementById('chainExecLHOST').value;
+        const lport = document.getElementById('chainExecLPORT').value;
+
+        if (!chainId) { showToast('warning', 'Hinweis', 'Bitte eine Angriffskette auswählen'); return; }
         if (!scanId) { showToast('warning', 'Hinweis', 'Bitte einen Scan auswählen'); return; }
+        if (!targetIp) { showToast('warning', 'Hinweis', 'Bitte eine Ziel-IP auswählen'); return; }
+
         try {
-            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', { scanId: parseInt(scanId) });
+            const params = { LHOST: lhost, LPORT: lport };
+            const payload = {
+                scanId: parseInt(scanId),
+                targetIp: targetIp,
+                params: params
+            };
+            if (targetPort) payload.targetPort = parseInt(targetPort);
+
+            const d = await api(`/api/attack-chains/${chainId}/execute`, 'POST', payload);
             showToast('success', 'Gestartet', `Angriffskette wird ausgeführt. Execution #${d.executionId || d.id || ''}`);
+
+            // Set current exec ID to allow auto-refresh
+            currentChainExecId = d.executionId || d.id;
+
+            // Show details immediately
+            showChainExecDetail(currentChainExecId);
+
             hideExecuteChainModal();
             loadAttackChains(); loadChainStats();
         } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
     window.showChainExecDetail = async function (execId) {
+        // Update global
+        currentChainExecId = execId;
+
         try {
             const d = await api(`/api/attack-chains/executions/${execId}`);
             const ex = d.execution || d;
             const results = ex.results ? (typeof ex.results === 'string' ? JSON.parse(ex.results) : ex.results) : [];
+            const findings = ex.findings ? (typeof ex.findings === 'string' ? JSON.parse(ex.findings) : ex.findings) : [];
+
+            // Check for shell sessions
+            const shellFinding = findings.find(f => f.sessionId && (f.type === 'exploit_success' || f.category === 'Remote Shell'));
+
             document.getElementById('chainExecDetailContent').innerHTML = `
                 <div class="detail-grid">
                     <div class="detail-item"><label>Execution ID</label><span>#${ex.id}</span></div>
@@ -1486,6 +1692,13 @@
                     <div class="detail-item"><label>Abgeschlossen</label><span>${formatDate(ex.completed_at)}</span></div>
                     <div class="detail-item"><label>Schritte</label><span>${ex.steps_completed || 0} / ${ex.steps_total || 0}</span></div>
                 </div>
+
+                ${shellFinding ? `
+                <div class="alert alert-success mt-2 d-flex justify-between align-center" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);padding:1rem;border-radius:var(--radius-sm)">
+                    <div><strong><i class="bi bi-terminal-fill mr-1"></i> Remote Shell verfügbar!</strong><br><small>Session ID: ${shellFinding.sessionId}</small></div>
+                    <button class="btn btn-primary" onclick="showShellModal('${shellFinding.sessionId}')"><i class="bi bi-terminal"></i> Verbinden</button>
+                </div>` : ''}
+
                 ${results.length > 0 ? `<h4 class="mt-2 mb-1">Ergebnisse</h4>
                 <div class="chain-exec-results">${results.map((r, i) => `
                     <div class="exec-result-step">
@@ -1493,14 +1706,107 @@
                         <div class="step-result-info">
                             <strong>${esc(r.step || r.name || 'Schritt ' + (i+1))}</strong>
                             <span class="badge badge-${r.status === 'completed' ? 'green' : r.status === 'failed' ? 'red' : 'yellow'}">${r.status || 'pending'}</span>
-                            ${r.findings ? `<p class="text-muted mt-1">${esc(typeof r.findings === 'string' ? r.findings : JSON.stringify(r.findings))}</p>` : ''}
+                            ${r.findings && r.findings.length > 0 ?
+                                `<ul class="text-muted mt-1" style="font-size:0.85rem;padding-left:1rem">${r.findings.map(f => `<li>${esc(f.title || f.category)}</li>`).join('')}</ul>`
+                                : '<p class="text-muted mt-1">Keine Befunde.</p>'}
                         </div>
                     </div>
                 `).join('')}</div>` : '<p class="text-muted mt-2">Keine Ergebnisse verfügbar.</p>'}`;
             document.getElementById('chainExecDetailModal').classList.add('active');
         } catch (e) { showToast('error', 'Fehler', e.message); }
     };
-    window.hideChainExecDetailModal = function () { document.getElementById('chainExecDetailModal').classList.remove('active'); };
+
+    // ============================================
+    // ========== SHELL MODULE ==========
+    // ============================================
+    window.showShellModal = function(sessionId) {
+        document.getElementById('shellModal').classList.add('active');
+        // Wait for modal to be visible for xterm to calculate size
+        setTimeout(() => initShellSession(sessionId), 100);
+    };
+
+    window.hideShellModal = function() {
+        document.getElementById('shellModal').classList.remove('active');
+        if (currentShellWs) {
+            currentShellWs.close();
+            currentShellWs = null;
+        }
+        if (currentTerm) {
+            currentTerm.dispose();
+            currentTerm = null;
+        }
+        document.getElementById('terminal-container').innerHTML = '';
+        document.getElementById('shellStatus').className = 'badge badge-gray';
+        document.getElementById('shellStatus').textContent = 'Getrennt';
+    };
+
+    function initShellSession(sessionId) {
+        const container = document.getElementById('terminal-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        // Check if xterm is loaded
+        if (typeof Terminal === 'undefined') {
+            container.innerHTML = '<div style="color:red;padding:1rem">Fehler: Terminal-Bibliothek nicht geladen.</div>';
+            return;
+        }
+
+        const term = new Terminal({
+            cursorBlink: true,
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff'
+            }
+        });
+
+        fitAddon = new FitAddon.FitAddon();
+        term.loadAddon(fitAddon);
+
+        term.open(container);
+        fitAddon.fit();
+        currentTerm = term;
+
+        window.addEventListener('resize', () => fitAddon.fit());
+
+        // Connect WebSocket
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/shell/${sessionId}`;
+        const ws = new WebSocket(wsUrl);
+        currentShellWs = ws;
+
+        term.write('\r\n\x1b[33mConnecting to shell session...\x1b[0m\r\n');
+
+        ws.onopen = () => {
+            term.write('\r\n\x1b[32mConnected!\x1b[0m\r\n');
+            document.getElementById('shellStatus').className = 'badge badge-green';
+            document.getElementById('shellStatus').textContent = 'Verbunden';
+            term.focus();
+        };
+
+        ws.onmessage = (event) => {
+            term.write(event.data);
+        };
+
+        ws.onclose = () => {
+            term.write('\r\n\x1b[31mConnection closed.\x1b[0m\r\n');
+            document.getElementById('shellStatus').className = 'badge badge-red';
+            document.getElementById('shellStatus').textContent = 'Getrennt';
+        };
+
+        ws.onerror = (err) => {
+            term.write('\r\n\x1b[31mConnection error.\x1b[0m\r\n');
+        };
+
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(data);
+            }
+        });
+    }
+    window.hideChainExecDetailModal = function () {
+        document.getElementById('chainExecDetailModal').classList.remove('active');
+        currentChainExecId = null; // Reset monitoring
+    };
 
     // ============================================
     // ========== SECURITY AUDIT MODULE ==========
@@ -1654,122 +1960,6 @@
     window.deleteAudit = async function (id) {
         if (!confirm('Audit wirklich löschen?')) return;
         try { await api(`/api/audits/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Audit gelöscht.'); loadAuditHistory(); } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    // ============================================
-    // ========== CREDENTIALS MODULE ==========
-    // ============================================
-
-    async function loadCredentialStats() {
-        try {
-            const d = await api('/api/db-update/stats');
-            const cr = d.credentials;
-            document.getElementById('credStatTotal').textContent = cr.total || 0;
-            document.getElementById('credStatValid').textContent = cr.valid || 0;
-            document.getElementById('credStatInvalid').textContent = (cr.total || 0) - (cr.valid || 0);
-        } catch (e) { console.error('Cred stats error:', e); }
-    }
-
-    async function loadCredentials() {
-        try {
-            const d = await api('/api/credentials');
-            const creds = d.credentials || d || [];
-            const tbody = document.getElementById('credTableBody');
-
-            if (creds.length > 0) {
-                tbody.innerHTML = creds.map(c => `<tr>
-                    <td><strong>${esc(c.name)}</strong></td>
-                    <td><span class="badge badge-blue">${esc(c.credential_type || 'password')}</span></td>
-                    <td>${esc(c.username || '-')}</td>
-                    <td><span class="badge badge-gray">${esc(c.auth_method || 'password')}</span></td>
-                    <td>${esc(c.target_scope || '*')}</td>
-                    <td><span class="badge badge-${c.is_valid ? 'green' : 'red'}">${c.is_valid ? 'Gültig' : 'Ungültig'}</span></td>
-                    <td>${formatDate(c.last_used_at)}</td>
-                    <td>
-                        <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="editCredential(${c.id})"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteCredential(${c.id})"><i class="bi bi-trash"></i></button>
-                        </div>
-                    </td>
-                </tr>`).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted">Keine Credentials gespeichert</td></tr>';
-            }
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    }
-
-    window.showCredentialModal = function () {
-        document.getElementById('credForm').reset();
-        document.getElementById('credModalTitle').textContent = 'Neues Credential hinzufügen';
-        document.getElementById('credEditId').value = '';
-        toggleCredFields();
-        document.getElementById('credentialModal').classList.add('active');
-    };
-    window.hideCredentialModal = function () { document.getElementById('credentialModal').classList.remove('active'); };
-
-    window.toggleCredFields = function () {
-        const type = document.getElementById('credAuthMethod').value;
-        const sshGroup = document.getElementById('credSshKeyGroup');
-        const pwGroup = document.getElementById('credPasswordGroup');
-        if (type === 'ssh_key' || type === 'ssh_key_password') {
-            sshGroup.classList.remove('hidden');
-        } else {
-            sshGroup.classList.add('hidden');
-        }
-        if (type === 'ssh_key') {
-            pwGroup.classList.add('hidden');
-        } else {
-            pwGroup.classList.remove('hidden');
-        }
-    };
-
-    window.saveCredential = async function (e) {
-        if (e && e.preventDefault) e.preventDefault();
-        try {
-            const editId = document.getElementById('credEditId').value;
-            const data = {
-                name: document.getElementById('credName').value,
-                credential_type: document.getElementById('credAuthMethod').value,
-                username: document.getElementById('credUsername').value,
-                password: document.getElementById('credPassword').value,
-                ssh_key: document.getElementById('credSshKey')?.value || '',
-                auth_method: document.getElementById('credAuthMethod').value,
-                target_scope: document.getElementById('credTargetScope').value,
-                description: document.getElementById('credDescription').value,
-                domain: document.getElementById('credDomain')?.value || ''
-            };
-            if (editId) {
-                await api(`/api/credentials/${editId}`, 'PUT', data);
-                showToast('success', 'Aktualisiert', 'Credential wurde aktualisiert.');
-            } else {
-                await api('/api/credentials', 'POST', data);
-                showToast('success', 'Erstellt', 'Credential wurde hinzugefügt.');
-            }
-            hideCredentialModal(); loadCredentials(); loadCredentialStats();
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    window.editCredential = async function (id) {
-        try {
-            const d = await api(`/api/credentials/${id}`);
-            const c = d.credential || d;
-            document.getElementById('credEditId').value = c.id;
-            document.getElementById('credModalTitle').textContent = 'Credential bearbeiten';
-            document.getElementById('credName').value = c.name || '';
-            document.getElementById('credAuthMethod').value = c.credential_type || 'password';
-            document.getElementById('credUsername').value = c.username || '';
-            document.getElementById('credAuthMethod').value = c.auth_method || 'password';
-            document.getElementById('credTargetScope').value = c.target_scope || '';
-            document.getElementById('credDescription').value = c.description || '';
-            if (document.getElementById('credDomain')) document.getElementById('credDomain').value = c.domain || '';
-            toggleCredFields();
-            document.getElementById('credentialModal').classList.add('active');
-        } catch (e) { showToast('error', 'Fehler', e.message); }
-    };
-
-    window.deleteCredential = async function (id) {
-        if (!confirm('Credential wirklich löschen?')) return;
-        try { await api(`/api/credentials/${id}`, 'DELETE'); showToast('success', 'Gelöscht', 'Credential gelöscht.'); loadCredentials(); loadCredentialStats(); } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
     // ============================================

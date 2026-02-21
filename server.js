@@ -2,6 +2,7 @@ require('dotenv').config();
 const { initializeDatabase, closeDatabase } = require('./config/database');
 const schedulerService = require('./services/schedulerService');
 const logger = require('./services/logger');
+const websocketService = require('./services/websocketService');
 const app = require('./app');
 
 const PORT = process.env.PORT || 3000;
@@ -20,6 +21,9 @@ function startServer() {
             logger.info(`Umgebung: ${process.env.NODE_ENV || 'development'}`);
             logger.info(`Öffne http://localhost:${PORT} im Browser`);
         });
+
+        // Initialize WebSocket Service
+        websocketService.initialize(server);
 
         // Graceful shutdown
         const shutdown = (signal) => {

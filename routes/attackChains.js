@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { requirePermission } = require('../middleware/rbac');
-const AttackChainService = require('../services/attackChainService');
+const attackChainService = require('../services/attackChainService');
 const logger = require('../services/logger');
 
 // Get all attack chains
@@ -14,7 +14,7 @@ router.get('/', requireAuth, (req, res) => {
             enabled: req.query.enabled !== undefined ? req.query.enabled === 'true' : undefined,
             search: req.query.search
         };
-        const chains = AttackChainService.getAll(filters);
+        const chains = attackChainService.getAll(filters);
         res.json({ chains });
     } catch (err) {
         logger.error('Error fetching attack chains:', err);
@@ -25,7 +25,7 @@ router.get('/', requireAuth, (req, res) => {
 // Get available strategies
 router.get('/strategies', requireAuth, (req, res) => {
     try {
-        const strategies = AttackChainService.getStrategies();
+        const strategies = attackChainService.getStrategies();
         res.json(strategies);
     } catch (err) {
         logger.error('Error fetching strategies:', err);
@@ -56,7 +56,7 @@ router.get('/executions/history', requireAuth, (req, res) => {
 router.get('/applicable/:scanId', requireAuth, (req, res) => {
     try {
         const scanId = parseInt(req.params.scanId);
-        const applicable = AttackChainService.findApplicableChains(scanId);
+        const applicable = attackChainService.findApplicableChains(scanId);
         res.json(applicable);
     } catch (err) {
         logger.error('Error finding applicable chains:', err);
@@ -68,7 +68,7 @@ router.get('/applicable/:scanId', requireAuth, (req, res) => {
 router.get('/executions/scan/:scanId', requireAuth, (req, res) => {
     try {
         const scanId = parseInt(req.params.scanId);
-        const executions = AttackChainService.getExecutions(scanId);
+        const executions = attackChainService.getExecutions(scanId);
         res.json({ executions });
     } catch (err) {
         logger.error('Error fetching executions:', err);
@@ -79,7 +79,7 @@ router.get('/executions/scan/:scanId', requireAuth, (req, res) => {
 // Get execution by ID
 router.get('/executions/:id', requireAuth, (req, res) => {
     try {
-        const exec = AttackChainService.getExecutionById(parseInt(req.params.id));
+        const exec = attackChainService.getExecutionById(parseInt(req.params.id));
         if (!exec) return res.status(404).json({ error: 'Ausführung nicht gefunden' });
         res.json({ execution: exec });
     } catch (err) {
@@ -91,7 +91,7 @@ router.get('/executions/:id', requireAuth, (req, res) => {
 // Get chain by ID
 router.get('/:id', requireAuth, (req, res) => {
     try {
-        const chain = AttackChainService.getById(parseInt(req.params.id));
+        const chain = attackChainService.getById(parseInt(req.params.id));
         if (!chain) return res.status(404).json({ error: 'Angriffskette nicht gefunden' });
         res.json(chain);
     } catch (err) {
@@ -101,9 +101,9 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // Execute an attack chain (legacy endpoint)
-router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res) => {
+router.post('/execute', requireAuth, requirePermission('scan:start'), async (req, res) => {
     try {
-        const { scanId, chainId, targetIp, targetPort } = req.body;
+        const { scanId, chainId, targetIp, targetPort, params } = req.body;
         if (!scanId || !chainId) {
             return res.status(400).json({ error: 'scanId und chainId sind erforderlich' });
         }
@@ -115,10 +115,11 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res)
             const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
             ip = scan ? scan.target : '0.0.0.0';
         }
-        const result = AttackChainService.executeChain(
+        const result = await attackChainService.executeChain(
             parseInt(scanId), parseInt(chainId), ip,
             targetPort ? parseInt(targetPort) : null,
-            req.session.userId
+            req.session.userId,
+            params || {}
         );
         res.json(result);
     } catch (err) {
@@ -128,10 +129,10 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), (req, res)
 });
 
 // Execute a specific chain by ID
-router.post('/:id/execute', requireAuth, requirePermission('scan:start'), (req, res) => {
+router.post('/:id/execute', requireAuth, requirePermission('scan:start'), async (req, res) => {
     try {
         const chainId = parseInt(req.params.id);
-        const { scanId, targetIp, targetPort } = req.body;
+        const { scanId, targetIp, targetPort, params } = req.body;
         if (!scanId) {
             return res.status(400).json({ error: 'scanId ist erforderlich' });
         }
@@ -143,10 +144,11 @@ router.post('/:id/execute', requireAuth, requirePermission('scan:start'), (req, 
             const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
             ip = scan ? scan.target : '0.0.0.0';
         }
-        const result = AttackChainService.executeChain(
+        const result = await attackChainService.executeChain(
             parseInt(scanId), chainId, ip,
             targetPort ? parseInt(targetPort) : null,
-            req.session.userId
+            req.session.userId,
+            params || {}
         );
         res.json(result);
     } catch (err) {
@@ -158,7 +160,7 @@ router.post('/:id/execute', requireAuth, requirePermission('scan:start'), (req, 
 // Create a custom attack chain
 router.post('/', requireAuth, requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
-        const id = AttackChainService.create(req.body, req.session.userId);
+        const id = attackChainService.create(req.body, req.session.userId);
         res.status(201).json({ id, message: 'Angriffskette erstellt' });
     } catch (err) {
         logger.error('Error creating attack chain:', err);
@@ -169,7 +171,7 @@ router.post('/', requireAuth, requirePermission('vulnerabilities:edit'), (req, r
 // Toggle chain enabled/disabled
 router.patch('/:id/toggle', requireAuth, requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
-        const enabled = AttackChainService.toggleEnabled(parseInt(req.params.id));
+        const enabled = attackChainService.toggleEnabled(parseInt(req.params.id));
         res.json({ enabled, message: enabled ? 'Angriffskette aktiviert' : 'Angriffskette deaktiviert' });
     } catch (err) {
         logger.error('Error toggling attack chain:', err);
@@ -180,7 +182,7 @@ router.patch('/:id/toggle', requireAuth, requirePermission('vulnerabilities:edit
 // Delete a chain
 router.delete('/:id', requireAuth, requirePermission('vulnerabilities:edit'), (req, res) => {
     try {
-        AttackChainService.delete(parseInt(req.params.id));
+        attackChainService.delete(parseInt(req.params.id));
         res.json({ message: 'Angriffskette gelöscht' });
     } catch (err) {
         logger.error('Error deleting attack chain:', err);

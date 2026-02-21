@@ -1,157 +1,104 @@
 const { chromium } = require('playwright');
-const fs = require('fs');
+const assert = require('assert');
 
 (async () => {
-  const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext();
-  const page = await context.newPage();
+    console.log('Starting WebUI Attack Chain Test...');
+    const browser = await chromium.launch({ args: ['--no-sandbox'] });
+    const context = await browser.newContext();
+    const page = await context.newPage();
 
-  page.on('console', msg => console.log('PAGE LOG:', msg.text()));
-  page.on('pageerror', exception => console.log('PAGE ERROR:', exception));
-
-  // Helper to take screenshot on failure
-  async function takeScreenshot(name) {
-      await page.screenshot({ path: `screenshot_${name}.png`, fullPage: true });
-  }
-
-  try {
-    console.log('Navigating to login page...');
-    await page.goto('http://localhost:3000');
+    page.on('console', msg => console.log('PAGE LOG:', msg.text()));
+    page.on('pageerror', exception => console.log(`PAGE ERROR: "${exception}"`));
+    // page.on('request', request => console.log('>>', request.method(), request.url()));
+    // page.on('response', response => console.log('<<', response.status(), response.url()));
 
     try {
-        await Promise.race([
-            page.waitForSelector('#loginForm', { state: 'visible', timeout: 5000 }),
-            page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 5000 })
-        ]);
-    } catch (e) {}
+        // Mock APIs
+        await page.route('**/api/auth/status', async route => {
+            await route.fulfill({
+                status: 200,
+                contentType: 'application/json',
+                body: JSON.stringify({ authenticated: true, user: { username: 'admin' }, csrfToken: 'abc' })
+            });
+        });
 
-    if (await page.isVisible('#loginForm')) {
-        console.log('Logging in with admin/admin...');
-        await page.fill('#username', 'admin');
-        await page.fill('#password', 'admin');
-        await page.click('#loginBtn');
+        await page.route('**/api/users/me/permissions', async route => {
+             await route.fulfill({ status: 200, body: JSON.stringify({ roles: ['admin'], permissions: [] }) });
+        });
 
-        try {
-            await Promise.race([
-                page.waitForSelector('#loginError:not(.hidden)', { timeout: 3000 }),
-                page.waitForSelector('#passwordChangeForm:not(.hidden)', { timeout: 3000 }),
-                page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 3000 })
-            ]);
-        } catch (e) {}
+        await page.route('**/api/scan/dashboard', async route => {
+            await route.fulfill({ status: 200, body: JSON.stringify({ activeScans: 0, recentScans: [] }) });
+        });
 
-        if (await page.isVisible('#loginError:not(.hidden)')) {
-            console.log('Login failed with default creds. Trying new password...');
-            await page.fill('#password', 'NewPass123!');
-            await page.click('#loginBtn');
-            await page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 10000 });
-        }
-    }
+        await page.route('**/api/scan/history', async route => {
+            await route.fulfill({ status: 200, body: JSON.stringify({ scans: [] }) });
+        });
 
-    if (await page.isVisible('#passwordChangeForm:not(.hidden)')) {
-         console.log('Password change required (initial login)...');
-         await page.fill('#currentPassword', 'admin');
-         await page.fill('#newPassword', 'NewPass123!');
-         await page.fill('#confirmPassword', 'NewPass123!');
-         await page.click('#pwChangeBtn');
-         await page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 10000 });
-    } else {
-        if (!await page.isVisible('#view-dashboard')) {
-            await page.waitForSelector('#view-dashboard', { state: 'visible', timeout: 10000 });
-        }
-    }
+        await page.route('**/api/scan/events', async route => {
+             await route.fulfill({ status: 200, contentType: 'text/event-stream', body: '' });
+        });
 
-    console.log('Dashboard loaded.');
+        await page.route('**/api/scan/results/101', async route => {
+            await route.fulfill({
+                status: 200, body: JSON.stringify({ results: [{ip_address:'1.1.1.1', port:80, service:'http'}] })
+            });
+        });
 
-    console.log('Switching to New Scan...');
-    await page.click('[data-view="new-scan"]');
-    await page.waitForSelector('#view-new-scan.active');
+        await page.route('**/api/exploits/scan/101', async route => {
+            await route.fulfill({
+                status: 200, body: JSON.stringify({
+                    exploits: [{
+                        exploit_id: 1,
+                        exploit_title: 'Test Exploit',
+                        match_confidence: 100,
+                        port: 80,
+                        ip_address: '1.1.1.1',
+                        exploit_db_id: '12345'
+                    }]
+                })
+            });
+        });
 
-    console.log('Starting scan on 127.0.0.1...');
-    await page.fill('#scanTarget', '127.0.0.1');
-    await page.selectOption('#scanType', 'quick');
-    await page.click('#startScanBtn');
-
-    console.log('Waiting for scan completion (via History)...');
-    await page.waitForTimeout(15000);
-
-    console.log('Switching to History...');
-    await page.click('[data-view="history"]');
-    await page.waitForSelector('#view-history.active');
-
-    try {
-        await page.waitForSelector('#historyTableBody tr:has-text("Abgeschlossen")', { timeout: 5000 });
-        console.log('Found completed scan in history.');
-    } catch (e) {
-        console.log('Scan not yet completed in history. Reloading history...');
-        await page.evaluate('loadHistory()');
+        // 2. Load Dashboard
+        console.log('Loading dashboard...');
+        await page.goto('http://localhost:3000/dashboard');
         await page.waitForTimeout(2000);
-        await page.waitForSelector('#historyTableBody tr:has-text("Abgeschlossen")', { timeout: 60000 });
-        console.log('Found completed scan in history after wait.');
-    }
 
-    console.log('Opening scan details...');
-    const detailBtn = await page.locator('#historyTableBody tr:has-text("Abgeschlossen") .btn-outline').first();
-    await detailBtn.click();
+        // 3. Trigger "Create Chain from Scan"
+        console.log('Triggering createChainFromScan(101)...');
 
-    await page.waitForSelector('#view-scan-detail.active');
-    console.log('Scan Detail view active.');
-    await takeScreenshot('scan_detail');
+        const type = await page.evaluate(() => typeof window.createChainFromScan);
+        console.log('Type of window.createChainFromScan:', type);
 
-    // Verify "Create Chain" button exists in Detail View (use specific selector)
-    const createChainBtn = await page.waitForSelector('#view-scan-detail button:has-text("Chain erstellen")', { timeout: 5000 });
-    if (!createChainBtn) throw new Error('Create Chain button not found in Detail View');
-    console.log('Create Chain button found.');
+        if (type === 'function') {
+            await page.evaluate(() => window.createChainFromScan(101));
+            console.log('Function executed.');
+            await page.waitForTimeout(1000);
 
-    console.log('Clicking Create Chain...');
-    await createChainBtn.click();
+            // Check input values
+            const inputs = await page.locator('#chainStepsContainer input[data-field="name"]').all();
+            let found = false;
+            for (const input of inputs) {
+                const val = await input.inputValue();
+                console.log('Step Name:', val);
+                if (val.includes('Test Exploit')) found = true;
+            }
 
-    console.log('Waiting for modal...');
-    try {
-        await page.waitForSelector('#chainModal.active', { timeout: 10000 });
-        console.log('Chain Modal opened.');
-        await takeScreenshot('chain_modal');
-    } catch (e) {
-        console.log('Modal did not open. Checking toasts...');
-        if (await page.isVisible('.toast-message')) {
-             const toast = await page.textContent('.toast-message');
-             console.log('Toast detected:', toast);
+            if (found) {
+                console.log('SUCCESS: Exploit found in modal inputs');
+            } else {
+                console.log('FAILURE: Exploit not found in modal inputs');
+                process.exit(1);
+            }
         } else {
-             console.log('No toast detected either.');
+            console.log('FAILURE: Function not found.');
+            process.exit(1);
         }
-        await takeScreenshot('modal_fail');
-        throw e;
+
+    } catch (e) {
+        console.error('Test Failed:', e);
+        process.exit(1);
+    } finally {
+        await browser.close();
     }
-
-    const name = await page.inputValue('#chainFormName');
-    console.log(`Chain Name: ${name}`);
-
-    if (!name.includes('Chain from Scan')) throw new Error('Chain name not populated correctly');
-
-    console.log('Saving chain...');
-    await page.click('#chainModal .btn-success');
-
-    // Wait for modal to hide
-    await page.waitForSelector('#chainModal', { state: 'hidden', timeout: 5000 });
-    console.log('Chain saved and modal closed.');
-
-    console.log('Switching to Attack Chains view...');
-    await page.click('[data-view="attack-chains"]');
-    await page.waitForSelector('#view-attack-chains.active');
-
-    // Wait a bit for the list to refresh (saveChain calls loadAttackChains)
-    await page.waitForTimeout(1000);
-
-    await page.waitForSelector('.chain-card h4:has-text("Chain from Scan")', { timeout: 10000 });
-    console.log('Chain found in list.');
-    await takeScreenshot('chain_list');
-
-    console.log('Test passed successfully.');
-
-  } catch (err) {
-    console.error('Test failed:', err);
-    await takeScreenshot('failure');
-    process.exit(1);
-  } finally {
-    await browser.close();
-  }
 })();

@@ -164,17 +164,21 @@ async function syncCVE(userId) {
              cvss_vector, affected_products, references_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
+
+        let totalProcessed = 0, totalAdded = 0, totalErrors = 0;
+
         const insertBatch = database.transaction((items) => {
             for (const item of items) {
                 try {
                     insertStmt.run(item.cveId, item.state, item.datePublished, item.dateUpdated,
                         item.title, item.description, item.severity, item.cvssScore,
                         item.cvssVector, item.affectedProducts, item.referencesJson);
-                } catch {}
+                } catch (err) {
+                    totalErrors++;
+                    console.error(`Error inserting CVE ${item.cveId}: ${err.message}`);
+                }
             }
         });
-
-        let totalProcessed = 0, totalAdded = 0, totalErrors = 0;
         const checkpoint = loadCheckpoint('cve');
         let startYearIdx = 0;
         if (checkpoint && checkpoint.lastYearIdx !== undefined) {
@@ -236,7 +240,10 @@ async function syncCVE(userId) {
                         const cveData = JSON.parse(raw);
                         const parsed = parseCVEv5(cveData);
                         if (parsed) batch.push(parsed);
-                    } catch { totalErrors++; }
+                    } catch (err) {
+                        totalErrors++;
+                        console.error(`Error parsing CVE file ${file}: ${err.message}`);
+                    }
 
                     if (batch.length >= BATCH_SIZE) {
                         const before = totalAdded;
@@ -552,7 +559,10 @@ async function syncExploits(userId) {
                     code: codeExists ? codePath : null,
                     verified: codeExists ? 1 : 0
                 });
-            } catch { errors++; }
+            } catch (err) {
+                errors++;
+                console.error(`Error parsing exploit CSV line ${i}: ${err.message}`);
+            }
 
             if (batch.length >= BATCH) {
                 database.transaction((items) => {
@@ -560,7 +570,10 @@ async function syncExploits(userId) {
                         try {
                             insertStmt.run(e.edbId, e.cveId, e.title, e.desc, e.platform, e.type, e.service, e.port, e.severity, e.reliability, e.url, e.code, e.verified);
                             added++;
-                        } catch { errors++; }
+                        } catch (err) {
+                            errors++;
+                            console.error(`Error inserting exploit ${e.edbId}: ${err.message}`);
+                        }
                     }
                 })(batch);
                 batch = [];
@@ -572,7 +585,13 @@ async function syncExploits(userId) {
         if (batch.length > 0) {
             database.transaction((items) => {
                 for (const e of items) {
-                    try { insertStmt.run(e.edbId, e.cveId, e.title, e.desc, e.platform, e.type, e.service, e.port, e.severity, e.reliability, e.url, e.code, e.verified); added++; } catch { errors++; }
+                    try {
+                        insertStmt.run(e.edbId, e.cveId, e.title, e.desc, e.platform, e.type, e.service, e.port, e.severity, e.reliability, e.url, e.code, e.verified);
+                        added++;
+                    } catch (err) {
+                        errors++;
+                        console.error(`Error inserting exploit ${e.edbId}: ${err.message}`);
+                    }
                 }
             })(batch);
         }
@@ -592,13 +611,22 @@ async function syncExploits(userId) {
                     if (f.length < 5 || !f[0] || !f[2]) continue;
                     const codePath = f[1] ? path.join(EXPLOITDB_DIR, f[1].trim()) : null;
                     scBatch.push({ edbId: `SHELLCODE-${f[0].trim()}`, title: f[2].trim().substring(0, 500), platform: normPlatform(f[5]?.trim()), url: `https://www.exploit-db.com/shellcodes/${f[0].trim()}`, code: codePath && fs.existsSync(codePath) ? codePath : null });
-                } catch {}
+                } catch (err) {
+                    errors++;
+                    console.error(`Error parsing shellcode CSV line ${i}: ${err.message}`);
+                }
             }
             if (scBatch.length > 0) {
                 for (let i = 0; i < scBatch.length; i += BATCH) {
                     database.transaction((items) => {
                         for (const s of items) {
-                            try { insertStmt.run(s.edbId, null, s.title, `Shellcode: ${s.title}`, s.platform, 'shellcode', null, null, 'medium', 'unknown', s.url, s.code, 0); added++; } catch { errors++; }
+                            try {
+                                insertStmt.run(s.edbId, null, s.title, `Shellcode: ${s.title}`, s.platform, 'shellcode', null, null, 'medium', 'unknown', s.url, s.code, 0);
+                                added++;
+                            } catch (err) {
+                                errors++;
+                                console.error(`Error inserting shellcode ${s.edbId}: ${err.message}`);
+                            }
                         }
                     })(scBatch.slice(i, i + BATCH));
                 }

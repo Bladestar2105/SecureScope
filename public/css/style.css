@@ -545,3 +545,10 @@ code { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-siz
     box-shadow: 0 0 0 2px var(--accent-blue-bg);
     color: var(--accent-blue);
 }
+
+/* ===== Text Mono ===== */
+.text-mono {
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+    font-size: 0.9em;
+    word-break: break-all;
+}
