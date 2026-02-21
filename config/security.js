@@ -8,12 +8,11 @@ const crypto = require('crypto');
 const isProduction = process.env.NODE_ENV === 'production';
 
 /**
- * Helper to get a secret from environment variables or generate a fallback.
+ * Helper to get a secret from environment variables or generate a secure random one.
  * @param {string} envVar The environment variable name
- * @param {string|null} fallback Manual fallback (optional)
  * @returns {string} The secret
  */
-function getSecret(envVar, fallback = null) {
+function getSecret(envVar) {
     const value = process.env[envVar];
     const insecureFallbacks = [
         'fallback-secret-change-me',
@@ -25,41 +24,45 @@ function getSecret(envVar, fallback = null) {
         'test-secret-key'
     ];
 
-    const isInsecure = (val) => val && (insecureFallbacks.includes(val) || val.includes('change-me') || val.includes('fallback'));
+    const isInsecure = (val) => {
+        if (!val) return true;
+        if (val.length < 32) return true;
+        const lowerVal = val.toLowerCase();
+        if (insecureFallbacks.includes(val)) return true;
+        if (lowerVal.includes('change-me') || lowerVal.includes('change_me')) return true;
+        if (lowerVal.includes('fallback')) return true;
+        if (lowerVal.includes('secret') && lowerVal.length < 40) return true; // generic 'secret' in string
+        return false;
+    };
 
     if (value && !isInsecure(value)) {
         return value;
     }
 
+    // If we reach here, the value is missing or insecure.
+    // We ALWAYS generate a random secret to ensure security.
+
     if (isProduction) {
         if (value) {
-            console.error(`[CRITICAL SECURITY WARNING] Insecure ${envVar} provided in production environment! Ignoring it and using a generated/fallback secret. Sessions and encrypted data may not persist.`);
+            console.error(`[CRITICAL SECURITY WARNING] Insecure ${envVar} provided in production environment! Ignoring it and using a generated secret. Sessions and encrypted data may not persist.`);
         } else {
-            console.error(`[CRITICAL SECURITY WARNING] Required environment variable ${envVar} is missing in production! Using a generated/fallback secret. Sessions and encrypted data may not persist.`);
+            console.error(`[CRITICAL SECURITY WARNING] Required environment variable ${envVar} is missing in production! Using a generated secret. Sessions and encrypted data may not persist.`);
         }
-        // Fall through to generation logic...
     } else {
-        // For non-production:
-        if (value && isInsecure(value)) {
-            // We allow insecure values in non-production but warn
-            console.warn(`[SECURITY WARNING] Insecure ${envVar} detected. Using it anyway because NOT in production.`);
-            return value;
+        if (value) {
+            console.warn(`[SECURITY WARNING] Insecure ${envVar} detected in development. Ignoring it and using a generated secret for security.`);
+        } else {
+            console.info(`[SECURITY INFO] ${envVar} is not set. Using a temporary random secret.`);
         }
     }
 
-    if (fallback) {
-        return fallback;
-    }
-
-    // Generate random secret for non-production if none provided
-    const randomSecret = crypto.randomBytes(32).toString('hex');
-    console.warn(`[SECURITY NOTICE] ${envVar} is not set. Using a temporary random secret.`);
-    return randomSecret;
+    // Generate random secret (32 bytes = 64 hex characters)
+    return crypto.randomBytes(32).toString('hex');
 }
 
 const SESSION_SECRET = getSecret('SESSION_SECRET');
 const CSRF_SECRET = getSecret('CSRF_SECRET');
-const CREDENTIAL_SECRET = getSecret('CREDENTIAL_SECRET', SESSION_SECRET);
+const CREDENTIAL_SECRET = getSecret('CREDENTIAL_SECRET');
 
 const isCookieSecure = process.env.COOKIE_SECURE !== undefined
     ? process.env.COOKIE_SECURE === 'true'

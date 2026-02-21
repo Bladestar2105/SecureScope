@@ -22,8 +22,8 @@ describe('Security Configuration', () => {
         const security = require('../config/security');
         expect(security.SESSION_SECRET).toBeDefined();
         expect(security.CSRF_SECRET).toBeDefined();
-        expect(security.CREDENTIAL_SECRET).toBe(security.SESSION_SECRET);
-        expect(security.SESSION_SECRET.length).toBeGreaterThan(16);
+        expect(security.CREDENTIAL_SECRET).not.toBe(security.SESSION_SECRET);
+        expect(security.SESSION_SECRET.length).toBe(64); // 32 bytes hex
     });
 
     test('should generate random secret in production if SESSION_SECRET is missing', () => {
@@ -55,17 +55,42 @@ describe('Security Configuration', () => {
     });
 
     test('should use provided secrets if they are secure', () => {
-        process.env.SESSION_SECRET = 'a-very-secure-random-session-secret-12345';
-        process.env.CSRF_SECRET = 'another-secure-csrf-secret-67890';
+        process.env.SESSION_SECRET = 'a-very-secure-random-session-secret-12345-that-is-long-enough';
+        process.env.CSRF_SECRET = 'another-secure-csrf-secret-67890-that-is-also-long-enough';
         const security = require('../config/security');
-        expect(security.SESSION_SECRET).toBe('a-very-secure-random-session-secret-12345');
-        expect(security.CSRF_SECRET).toBe('another-secure-csrf-secret-67890');
+        expect(security.SESSION_SECRET).toBe('a-very-secure-random-session-secret-12345-that-is-long-enough');
+        expect(security.CSRF_SECRET).toBe('another-secure-csrf-secret-67890-that-is-also-long-enough');
     });
 
-    test('should allow insecure secrets in development but warn', () => {
+    test('should NOT allow insecure secrets in development and generate random instead', () => {
         process.env.NODE_ENV = 'development';
         process.env.SESSION_SECRET = 'fallback-secret-change-me';
+        const consoleSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
+
         const security = require('../config/security');
-        expect(security.SESSION_SECRET).toBe('fallback-secret-change-me');
+
+        expect(security.SESSION_SECRET).toBeDefined();
+        expect(security.SESSION_SECRET).not.toBe('fallback-secret-change-me');
+        expect(security.SESSION_SECRET.length).toBe(64);
+        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Insecure SESSION_SECRET detected in development'));
+
+        consoleSpy.mockRestore();
+    });
+
+    test('should reject secrets that are too short even in development', () => {
+        process.env.NODE_ENV = 'development';
+        process.env.SESSION_SECRET = 'too-short';
+        const security = require('../config/security');
+
+        expect(security.SESSION_SECRET.length).toBe(64);
+        expect(security.SESSION_SECRET).not.toBe('too-short');
+    });
+
+    test('should accept secrets that are long enough and not insecure', () => {
+        const secureSecret = 'a-very-long-and-secure-secret-that-is-over-32-characters-long';
+        process.env.SESSION_SECRET = secureSecret;
+        const security = require('../config/security');
+
+        expect(security.SESSION_SECRET).toBe(secureSecret);
     });
 });
