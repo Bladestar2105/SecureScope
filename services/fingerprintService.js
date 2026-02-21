@@ -76,10 +76,31 @@ class FingerprintService {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
+        // Optimization: Pre-fetch all fingerprints for the ports found in scan results
+        const uniquePorts = [...new Set(scanResults.map(r => r.port))];
+        const fingerprintMap = new Map();
+
+        if (uniquePorts.length > 0) {
+            const CHUNK_SIZE = 900; // Stay under SQLite parameter limit
+            for (let i = 0; i < uniquePorts.length; i += CHUNK_SIZE) {
+                const chunk = uniquePorts.slice(i, i + CHUNK_SIZE);
+                const placeholders = chunk.map(() => '?').join(',');
+                const allFps = db.prepare(`SELECT * FROM fingerprints WHERE port IN (${placeholders}) ORDER BY confidence DESC`).all(...chunk);
+
+                // Group by port
+                for (const fp of allFps) {
+                    if (!fingerprintMap.has(fp.port)) {
+                        fingerprintMap.set(fp.port, []);
+                    }
+                    fingerprintMap.get(fp.port).push(fp);
+                }
+            }
+        }
+
         const matchAll = db.transaction(() => {
             for (const result of scanResults) {
-                // Find fingerprints matching this port
-                const fps = db.prepare('SELECT * FROM fingerprints WHERE port = ? ORDER BY confidence DESC').all(result.port);
+                // Get fingerprints from pre-fetched map
+                const fps = fingerprintMap.get(result.port) || [];
 
                 if (fps.length > 0) {
                     // Use the highest-confidence match
