@@ -88,15 +88,16 @@ describe('ScannerService.getDashboardStats', () => {
         // Verify database calls
         expect(mockPrepare).toHaveBeenCalledTimes(3);
 
-        // Verify recent scans query structure - Ensure optimization is applied
+        // Verify recent scans query structure - Ensure JOIN optimization is applied
         const recentScansQuery = mockPrepare.mock.calls[2][0];
 
-        // Check for subqueries
-        expect(recentScansQuery).toContain('(SELECT COUNT(*) FROM scan_results sr WHERE sr.scan_id = s.id)');
-        expect(recentScansQuery).toContain('(SELECT COUNT(*) FROM scan_vulnerabilities sv WHERE sv.scan_id = s.id)');
+        // Check for JOIN and GROUP BY
+        expect(recentScansQuery).toContain('LEFT JOIN scan_results sr');
+        expect(recentScansQuery).toContain('LEFT JOIN scan_vulnerabilities sv');
+        expect(recentScansQuery).toContain('GROUP BY s.id');
 
-        // Ensure no LEFT JOIN or GROUP BY (the old inefficient way)
-        expect(recentScansQuery).not.toContain('LEFT JOIN scan_results');
-        expect(recentScansQuery).not.toContain('GROUP BY s.id');
+        // Ensure no correlated subqueries in SELECT (the anti-pattern)
+        expect(recentScansQuery).not.toContain('(SELECT COUNT(*) FROM scan_results sr WHERE sr.scan_id = s.id)');
+        expect(recentScansQuery).not.toContain('(SELECT COUNT(*) FROM scan_vulnerabilities sv WHERE sv.scan_id = s.id)');
     });
 });
