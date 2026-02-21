@@ -121,7 +121,7 @@ class ScannerService extends EventEmitter {
     // ============================================
 
     // Start a new scan
-    async startScan(userId, target, scanType, customPorts = null) {
+    async startScan(userId, target, scanType, customPorts = null, stealthMode = false) {
         const db = getDatabase();
 
         // Check concurrent scan limit
@@ -146,6 +146,14 @@ class ScannerService extends EventEmitter {
             }
         }
 
+        // Stealth mode requires root privileges
+        if (stealthMode) {
+            const isRoot = process.getuid && process.getuid() === 0;
+            if (!isRoot) {
+                throw new Error('Stealth-Scan erfordert Root-Rechte. Bitte starten Sie den Server mit erhöhten Berechtigungen.');
+            }
+        }
+
         // Get port range
         const portRange = ScannerService.getPortRange(scanType, customPorts);
 
@@ -157,45 +165,67 @@ class ScannerService extends EventEmitter {
             }
         }
 
+        // Store scan type with stealth suffix for identification
+        const effectiveScanType = stealthMode ? `${scanType}_stealth` : scanType;
+
         // Create scan record in database
         const result = db.prepare(
             'INSERT INTO scans (user_id, scan_type, target, port_range, status) VALUES (?, ?, ?, ?, ?)'
-        ).run(userId, scanType, target, portRange, 'running');
+        ).run(userId, effectiveScanType, target, portRange, 'running');
 
         const scanId = result.lastInsertRowid;
 
-        logger.info(`Scan ${scanId} started: type=${scanType}, target=${target}, ports=${portRange}`);
-        logger.audit('SCAN_STARTED', { scanId, userId, scanType, target });
+        logger.info(`Scan ${scanId} started: type=${effectiveScanType}, target=${target}, ports=${portRange}, stealth=${stealthMode}`);
+        logger.audit('SCAN_STARTED', { scanId, userId, scanType: effectiveScanType, target, stealthMode });
 
         // Execute scan asynchronously
-        this._executeScan(scanId, targetValidation, portRange, scanType);
+        this._executeScan(scanId, targetValidation, portRange, scanType, stealthMode);
 
         return {
             id: scanId,
             status: 'running',
-            scanType,
+            scanType: effectiveScanType,
             target,
             portRange
         };
     }
 
     // Build Nmap command arguments
-    _buildNmapArgs(target, portRange, scanType) {
-        const args = [
-            '-sV',                      // Service/version detection
-            '--version-intensity', '5',  // Balanced version detection intensity (0-9)
-            '-T4',                       // Aggressive timing (fast)
-            '-p', portRange,             // Port range
-            '-oX', '-',                  // XML output to stdout
-            '--open',                    // Only show open ports
-            '--host-timeout', '300s',    // 5 min timeout per host
-            '--max-retries', '2',        // Max retries
-        ];
+    _buildNmapArgs(target, portRange, scanType, stealthMode = false) {
+        const args = [];
 
-        // For full scan, increase timeout
-        if (scanType === 'full') {
-            const idx = args.indexOf('300s');
-            if (idx !== -1) args[idx] = '600s';
+        if (stealthMode) {
+            // Stealth SYN scan: uses half-open TCP connections
+            // Harder to detect by IDS/firewalls since connections are never fully established
+            args.push(
+                '-sS',                       // SYN stealth scan (half-open)
+                '-T2',                       // Polite timing (slower, stealthier)
+                '-p', portRange,             // Port range
+                '-oX', '-',                  // XML output to stdout
+                '--open',                    // Only show open ports
+                '--host-timeout', '600s',    // 10 min timeout (stealth is slower)
+                '--max-retries', '1',        // Fewer retries to reduce footprint
+                '--max-rate', '100',         // Limit packet rate for stealth
+                '-f',                        // Fragment packets (harder to detect)
+                '--data-length', '24',       // Append random data to packets
+            );
+        } else {
+            args.push(
+                '-sV',                      // Service/version detection
+                '--version-intensity', '5',  // Balanced version detection intensity (0-9)
+                '-T4',                       // Aggressive timing (fast)
+                '-p', portRange,             // Port range
+                '-oX', '-',                  // XML output to stdout
+                '--open',                    // Only show open ports
+                '--host-timeout', '300s',    // 5 min timeout per host
+                '--max-retries', '2',        // Max retries
+            );
+
+            // For full scan, increase timeout
+            if (scanType === 'full') {
+                const idx = args.indexOf('300s');
+                if (idx !== -1) args[idx] = '600s';
+            }
         }
 
         // Add OS detection (requires root)
@@ -209,7 +239,7 @@ class ScannerService extends EventEmitter {
     }
 
     // Internal: Execute the scan using Nmap
-    async _executeScan(scanId, targetValidation, portRange, scanType) {
+    async _executeScan(scanId, targetValidation, portRange, scanType, stealthMode = false) {
         const db = getDatabase();
         let scanControl = { aborted: false, process: null };
         this.activeScans.set(scanId, scanControl);
@@ -222,9 +252,9 @@ class ScannerService extends EventEmitter {
 
         try {
             const target = targetValidation.target;
-            const nmapArgs = this._buildNmapArgs(target, portRange, scanType);
+            const nmapArgs = this._buildNmapArgs(target, portRange, scanType, stealthMode);
 
-            logger.info(`Scan ${scanId}: Running nmap ${nmapArgs.join(' ')}`);
+            logger.info(`Scan ${scanId}: Running nmap ${nmapArgs.join(' ')} (stealth=${stealthMode})`);
 
             // Update progress - scanning phase
             db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(10, scanId);

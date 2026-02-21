@@ -160,6 +160,18 @@
                                     </select></div>
                                 <div class="form-group full-width hidden" id="customPortsGroup"><label for="customPorts">Benutzerdefinierte Ports</label>
                                     <input type="text" id="customPorts" class="form-control" placeholder="z.B. 22,80,443,3389 oder 1-1024"></div>
+                                <div class="form-group full-width">
+                                    <div class="stealth-option">
+                                        <label class="toggle-switch" for="stealthMode">
+                                            <input type="checkbox" id="stealthMode">
+                                            <span class="toggle-slider"></span>
+                                        </label>
+                                        <div class="stealth-label">
+                                            <span class="stealth-title"><i class="bi bi-incognito"></i> Stealth-Scan (SYN-Scan)</span>
+                                            <small class="text-muted" style="display:block;font-size:.75rem">Verwendet SYN-Pakete statt vollständiger TCP-Verbindungen. Schwerer zu erkennen, erfordert Root-Rechte. Service-Erkennung wird deaktiviert.</small>
+                                        </div>
+                                    </div>
+                                </div>
                                 <div class="full-width">
                                     <div id="scanWarning" class="hidden" style="padding:.75rem 1rem;background:var(--accent-yellow-bg);border:1px solid rgba(245,158,11,.2);border-radius:var(--radius-sm);margin-bottom:1rem;font-size:.875rem;color:var(--accent-yellow)">
                                         <i class="bi bi-exclamation-triangle mr-1"></i><span id="scanWarningText"></span></div>

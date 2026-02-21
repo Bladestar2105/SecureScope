@@ -69,6 +69,12 @@
     --shadow-sm: 0 1px 3px rgba(0,0,0,.08);
     --shadow-md: 0 4px 12px rgba(0,0,0,.1);
     --shadow-lg: 0 8px 24px rgba(0,0,0,.12);
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --sidebar-width: 260px;
+    --sidebar-collapsed: 64px;
+    --topbar-height: 60px;
 }
 
 /* ===== Reset & Base ===== */
@@ -544,6 +550,81 @@ code { font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace; font-siz
     outline: none;
     box-shadow: 0 0 0 2px var(--accent-blue-bg);
     color: var(--accent-blue);
+}
+
+/* ===== Stealth Scan Toggle ===== */
+.stealth-option {
+    display: flex;
+    align-items: flex-start;
+    gap: .85rem;
+    padding: .85rem 1rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    transition: border-color .15s ease, background .15s ease;
+}
+.stealth-option:hover {
+    border-color: var(--accent-purple);
+    background: var(--accent-purple-bg);
+}
+.stealth-label {
+    flex: 1;
+}
+.stealth-title {
+    font-size: .875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+.stealth-title i {
+    color: var(--accent-purple);
+    font-size: 1rem;
+}
+
+/* Toggle Switch */
+.toggle-switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+    cursor: pointer;
+}
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+.toggle-slider {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--border-light);
+    border-radius: 24px;
+    transition: background .2s ease;
+}
+.toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 3px;
+    bottom: 3px;
+    background: #fff;
+    border-radius: 50%;
+    transition: transform .2s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+.toggle-switch input:checked + .toggle-slider {
+    background: var(--accent-purple);
+}
+.toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(20px);
+}
+.toggle-switch input:focus + .toggle-slider {
+    box-shadow: 0 0 0 3px var(--accent-purple-bg);
 }
 
 /* ===== Text Mono ===== */
