@@ -18,6 +18,7 @@ function getSecret(envVar, fallback = null) {
     const insecureFallbacks = [
         'fallback-secret-change-me',
         'securescope-credential-key-change-me',
+        'securescope-salt-v1',
         'change_this_to_a_random_secret_in_production',
         'change_this_csrf_secret_in_production',
         'your_random_session_secret_here',
@@ -37,7 +38,13 @@ function getSecret(envVar, fallback = null) {
         } else {
             console.error(`[CRITICAL SECURITY WARNING] Required environment variable ${envVar} is missing in production! Using a generated/fallback secret. Sessions and encrypted data may not persist.`);
         }
-        // Fall through to generation logic...
+
+        if (fallback && !isInsecure(fallback)) {
+            return fallback;
+        }
+
+        const randomSecret = crypto.randomBytes(64).toString('hex');
+        return randomSecret;
     } else {
         // For non-production:
         if (value && isInsecure(value)) {
@@ -60,6 +67,7 @@ function getSecret(envVar, fallback = null) {
 const SESSION_SECRET = getSecret('SESSION_SECRET');
 const CSRF_SECRET = getSecret('CSRF_SECRET');
 const CREDENTIAL_SECRET = getSecret('CREDENTIAL_SECRET', SESSION_SECRET);
+const CREDENTIAL_SALT = getSecret('CREDENTIAL_SALT', 'securescope-salt-v1');
 
 const isCookieSecure = process.env.COOKIE_SECURE !== undefined
     ? process.env.COOKIE_SECURE === 'true'
@@ -69,6 +77,7 @@ module.exports = {
     SESSION_SECRET,
     CSRF_SECRET,
     CREDENTIAL_SECRET,
+    CREDENTIAL_SALT,
     isProduction,
     isCookieSecure
 };
