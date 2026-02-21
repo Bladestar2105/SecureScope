@@ -227,7 +227,7 @@
                     <td>#${s.id}</td><td>${esc(s.target)}</td><td><span class="badge badge-blue">${esc(s.scan_type)}</span></td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
-                    <td><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button></td>
+                    <td><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})" aria-label="Details anzeigen" title="Details anzeigen"><i class="bi bi-eye"></i></button></td>
                 </tr>`).join('');
             } else {
                 table.classList.add('hidden');
@@ -451,8 +451,8 @@
                     <td>#${s.id}</td><td>${esc(s.target)}</td><td><span class="badge badge-blue">${esc(s.scan_type)}</span></td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
-                    <td><div class="d-flex gap-1"><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteScan(${s.id})"><i class="bi bi-trash"></i></button></div></td>
+                    <td><div class="d-flex gap-1"><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})" aria-label="Details anzeigen" title="Details anzeigen"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteScan(${s.id})" aria-label="Scan löschen" title="Scan löschen"><i class="bi bi-trash"></i></button></div></td>
                 </tr>`).join('');
             } else {
                 empty.classList.remove('hidden');
@@ -544,8 +544,8 @@
                     <td>${esc(s.cron_expression)}</td><td><span class="badge badge-${s.enabled ? 'green' : 'gray'}">${s.enabled ? 'Aktiv' : 'Inaktiv'}</span></td>
                     <td>${formatDate(s.next_run)}</td>
                     <td><div class="d-flex gap-1">
-                        <button class="btn btn-outline btn-sm" onclick="toggleSchedule(${s.id}, ${!s.enabled})"><i class="bi bi-${s.enabled ? 'pause' : 'play'}"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})"><i class="bi bi-trash"></i></button>
+                        <button class="btn btn-outline btn-sm" onclick="toggleSchedule(${s.id}, ${!s.enabled})" aria-label="${s.enabled ? 'Plan pausieren' : 'Plan aktivieren'}" title="${s.enabled ? 'Pausieren' : 'Aktivieren'}"><i class="bi bi-${s.enabled ? 'pause' : 'play'}"></i></button>
+                        <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})" aria-label="Plan löschen" title="Löschen"><i class="bi bi-trash"></i></button>
                     </div></td>
                 </tr>`).join('');
             } else {
@@ -589,7 +589,7 @@
             tbody.innerHTML = users.map(u => `<tr>
                 <td>${u.id}</td><td>${esc(u.username)}</td><td>${esc((u.roles || []).join(', ') || '-')}</td>
                 <td>${formatDate(u.last_login)}</td><td>${formatDate(u.created_at)}</td>
-                <td><button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})" ${u.id === currentUser?.id ? 'disabled' : ''}><i class="bi bi-trash"></i></button></td>
+                <td><button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})" ${u.id === currentUser?.id ? 'disabled' : ''} aria-label="Benutzer löschen" title="Benutzer löschen"><i class="bi bi-trash"></i></button></td>
             </tr>`).join('');
         } catch (e) { showToast('error', 'Fehler', e.message); }
     }
@@ -738,8 +738,8 @@
                     <td><span class="badge badge-${f.source === 'nmap-db' ? 'blue' : f.source === 'nvd-cpe' ? 'green' : f.source === 'custom' ? 'yellow' : 'gray'}">${esc(f.source || 'seed')}</span></td>
                     <td>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="showFingerprintDetail(${f.id})" title="Details"><i class="bi bi-eye"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteFingerprint(${f.id})" title="Löschen"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-outline btn-sm" onclick="showFingerprintDetail(${f.id})" title="Details" aria-label="Details anzeigen"><i class="bi bi-eye"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteFingerprint(${f.id})" title="Löschen" aria-label="Fingerprint löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`).join('');
@@ -916,10 +916,10 @@
                     <td><span class="badge badge-${ex.reliability === 'excellent' || ex.reliability === 'verified' ? 'green' : ex.reliability === 'tested' || ex.reliability === 'good' ? 'blue' : 'yellow'}">${esc(ex.reliability || '-')}</span></td>
                     <td>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="showExploitDetail(${ex.id})" title="Details"><i class="bi bi-eye"></i></button>
-                            ${ex.exploit_code ? `<button class="btn btn-outline btn-sm" onclick="showExploitCode(${ex.id})" title="Code anzeigen" data-exploit-id="${ex.id}" data-edb-id="${esc(ex.exploit_db_id || '')}"><i class="bi bi-code-slash"></i></button>` : ''}
-                            ${ex.source_url ? `<a href="${esc(ex.source_url)}" target="_blank" class="btn btn-outline btn-sm" title="Referenz"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
-                            <button class="btn btn-danger btn-sm" onclick="deleteExploit(${ex.id})" title="Löschen"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-outline btn-sm" onclick="showExploitDetail(${ex.id})" title="Details" aria-label="Details anzeigen"><i class="bi bi-eye"></i></button>
+                            ${ex.exploit_code ? `<button class="btn btn-outline btn-sm" onclick="showExploitCode(${ex.id})" title="Code anzeigen" aria-label="Exploit-Code anzeigen" data-exploit-id="${ex.id}" data-edb-id="${esc(ex.exploit_db_id || '')}"><i class="bi bi-code-slash"></i></button>` : ''}
+                            ${ex.source_url ? `<a href="${esc(ex.source_url)}" target="_blank" class="btn btn-outline btn-sm" title="Referenz" aria-label="Quelle öffnen"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
+                            <button class="btn btn-danger btn-sm" onclick="deleteExploit(${ex.id})" title="Löschen" aria-label="Exploit löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`).join('');
@@ -1401,7 +1401,7 @@
                     <td>${statusBadge(ex.status)}</td>
                     <td>${ex.steps_completed || 0}/${ex.steps_total || 0}</td>
                     <td>${formatDate(ex.started_at)}</td>
-                    <td><button class="btn btn-outline btn-sm" onclick="showChainExecDetail(${ex.id})"><i class="bi bi-eye"></i></button></td>
+                    <td><button class="btn btn-outline btn-sm" onclick="showChainExecDetail(${ex.id})" aria-label="Details anzeigen" title="Details anzeigen"><i class="bi bi-eye"></i></button></td>
                 </tr>`).join('');
             } else {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Ausführungen</td></tr>';
@@ -1772,7 +1772,7 @@
                         <td>
                             <div class="d-flex gap-1">
                                 <button class="btn btn-outline btn-sm" onclick="showAuditDetail(${a.id})"><i class="bi bi-eye"></i> Details</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteAudit(${a.id})"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-danger btn-sm" onclick="deleteAudit(${a.id})" aria-label="Audit löschen" title="Audit löschen"><i class="bi bi-trash"></i></button>
                             </div>
                         </td>
                     </tr>`;
@@ -1901,8 +1901,8 @@
                     <td>${formatDate(c.last_used_at)}</td>
                     <td>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="editCredential(${c.id})"><i class="bi bi-pencil"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteCredential(${c.id})"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-outline btn-sm" onclick="editCredential(${c.id})" aria-label="Bearbeiten" title="Bearbeiten"><i class="bi bi-pencil"></i></button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCredential(${c.id})" aria-label="Löschen" title="Löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`).join('');
