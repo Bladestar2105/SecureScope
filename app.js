@@ -29,8 +29,10 @@ const ghdbRoutes = require('./routes/ghdb');
 
 const app = express();
 
-// Trust proxy (for rate limiting behind reverse proxy)
-app.set('trust proxy', 1);
+// Trust proxy (for rate limiting behind reverse proxy) - configurable
+if (process.env.TRUST_PROXY) {
+    app.set('trust proxy', process.env.TRUST_PROXY === 'true' ? 1 : process.env.TRUST_PROXY);
+}
 
 // Security headers with helmet
 app.use(helmet({
@@ -58,9 +60,9 @@ app.use(cors({
 // Compression for response optimization
 app.use(compression());
 
-// Body parsing
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+// Body parsing - limit request size to prevent DoS
+app.use(express.json({ limit: '5mb' }));
+app.use(express.urlencoded({ extended: true, limit: '5mb' }));
 
 // Cookie parser
 app.use(cookieParser(SESSION_SECRET));

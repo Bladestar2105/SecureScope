@@ -565,7 +565,7 @@ class ScannerService extends EventEmitter {
     // Get scan history with filters
     getScanHistory(userId, filters = {}) {
         const db = getDatabase();
-        let query = 'SELECT s.*, COUNT(sr.id) as result_count FROM scans s LEFT JOIN scan_results sr ON s.id = sr.scan_id WHERE s.user_id = ?';
+        let query = 'SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count FROM scans s LEFT JOIN scan_results sr ON s.id = sr.scan_id LEFT JOIN scan_vulnerabilities sv ON s.id = sv.scan_id WHERE s.user_id = ?';
         const params = [userId];
 
         if (filters.dateFrom) { query += ' AND s.started_at >= ?'; params.push(filters.dateFrom); }
@@ -580,7 +580,7 @@ class ScannerService extends EventEmitter {
         const limit = filters.limit || 20;
         const offset = (page - 1) * limit;
 
-        const countQuery = query.replace('SELECT s.*, COUNT(sr.id) as result_count', 'SELECT COUNT(DISTINCT s.id) as count').replace(' GROUP BY s.id ORDER BY s.started_at DESC', '');
+        const countQuery = query.replace('SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count', 'SELECT COUNT(DISTINCT s.id) as count').replace(' GROUP BY s.id ORDER BY s.started_at DESC', '');
         const total = db.prepare(countQuery).get(...params);
 
         query += ' LIMIT ? OFFSET ?';

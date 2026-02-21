@@ -4,6 +4,41 @@ const emailService = require('../services/emailService');
 const EmailService = require('../services/emailService');
 const { requireAuth } = require('../middleware/auth');
 const logger = require('../services/logger');
+const crypto = require('crypto');
+const { CREDENTIAL_SECRET, CREDENTIAL_SALT } = require('../config/security');
+
+// Encryption helpers for SMTP password
+const SMTP_ENCRYPTION_KEY = crypto.scryptSync(CREDENTIAL_SECRET, CREDENTIAL_SALT, 32);
+const SMTP_IV_LENGTH = 16;
+const SMTP_ALGORITHM = 'aes-256-gcm';
+
+function encryptSmtpPass(text) {
+    if (!text) return null;
+    const iv = crypto.randomBytes(SMTP_IV_LENGTH);
+    const cipher = crypto.createCipheriv(SMTP_ALGORITHM, SMTP_ENCRYPTION_KEY, iv);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    const authTag = cipher.getAuthTag().toString('hex');
+    return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+function decryptSmtpPass(encryptedText) {
+    if (!encryptedText) return null;
+    try {
+        const parts = encryptedText.split(':');
+        if (parts.length !== 3) return encryptedText; // Legacy plaintext fallback
+        const iv = Buffer.from(parts[0], 'hex');
+        const authTag = Buffer.from(parts[1], 'hex');
+        const encrypted = parts[2];
+        const decipher = crypto.createDecipheriv(SMTP_ALGORITHM, SMTP_ENCRYPTION_KEY, iv);
+        decipher.setAuthTag(authTag);
+        let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+        decrypted += decipher.final('utf8');
+        return decrypted;
+    } catch (err) {
+        return encryptedText; // Legacy plaintext fallback
+    }
+}
 
 router.use(requireAuth);
 
@@ -96,10 +131,10 @@ router.post('/settings', (req, res) => {
                 notifyScheduledReport !== false ? 1 : 0
             ];
 
-            // Only update password if provided
+            // Only update password if provided (encrypt it)
             if (smtpPass && smtpPass.length > 0) {
                 updateFields.splice(6, 0, 'smtp_pass = ?');
-                params.splice(6, 0, smtpPass);
+                params.splice(6, 0, encryptSmtpPass(smtpPass));
             }
 
             params.push(req.session.userId);
@@ -113,7 +148,7 @@ router.post('/settings', (req, res) => {
             `).run(
                 req.session.userId,
                 emailEnabled ? 1 : 0, emailAddress || null, smtpHost || null,
-                smtpPort || 587, smtpSecure ? 1 : 0, smtpUser || null, smtpPass || null,
+                smtpPort || 587, smtpSecure ? 1 : 0, smtpUser || null, smtpPass ? encryptSmtpPass(smtpPass) : null,
                 notifyScanComplete !== false ? 1 : 0, notifyCriticalFound !== false ? 1 : 0,
                 notifyScheduledReport !== false ? 1 : 0
             );

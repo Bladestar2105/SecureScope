@@ -14,12 +14,7 @@ router.get('/search', requireAuth, (req, res) => {
             limit: parseInt(req.query.limit) || 50
         };
 
-        // Handle search query for SQL
-        if (filters.search) {
-            filters.search = `%${filters.search}%`;
-        }
-
-        const result = GhdbService.search(req.query); // Use raw query for service to parse
+        const result = GhdbService.search(filters);
         res.json(result);
     } catch (err) {
         logger.error('Error searching GHDB:', err);
