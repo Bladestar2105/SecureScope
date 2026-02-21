@@ -441,14 +441,20 @@ class ScannerService extends EventEmitter {
         const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
 
         // Recent scans with result counts and vuln counts
-        // Optimized: Use correlated subqueries instead of JOIN+GROUP BY to avoid Cartesian product
+        // Optimized: Use JOIN and GROUP BY with a derived table to avoid correlated subqueries and maintain performance
         const recentScans = db.prepare(`
             SELECT s.*,
-                   (SELECT COUNT(*) FROM scan_results sr WHERE sr.scan_id = s.id) as result_count,
-                   (SELECT COUNT(*) FROM scan_vulnerabilities sv WHERE sv.scan_id = s.id) as vuln_count
-            FROM scans s
-            WHERE s.user_id = ?
-            ORDER BY s.started_at DESC LIMIT 10
+                   COUNT(DISTINCT sr.id) as result_count,
+                   COUNT(DISTINCT sv.id) as vuln_count
+            FROM (
+                SELECT * FROM scans
+                WHERE user_id = ?
+                ORDER BY started_at DESC LIMIT 10
+            ) s
+            LEFT JOIN scan_results sr ON sr.scan_id = s.id
+            LEFT JOIN scan_vulnerabilities sv ON sv.scan_id = s.id
+            GROUP BY s.id
+            ORDER BY s.started_at DESC
         `).all(userId);
 
         return {
