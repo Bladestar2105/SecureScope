@@ -356,6 +356,9 @@
                                 <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
                                     <i class="bi bi-diagram-3"></i> Chain erstellen
                                 </button>
+                                <button class="btn btn-danger btn-sm" onclick="showAutoAttackModal(${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-lightning-charge-fill"></i> Angriff starten
+                                </button>
                             </div>
                         </td>
                     </tr>`;
@@ -448,6 +451,9 @@
                                 </div>
                                 <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
                                     <i class="bi bi-diagram-3"></i> Chain erstellen
+                                </button>
+                                <button class="btn btn-danger btn-sm" onclick="showAutoAttackModal(${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-lightning-charge-fill"></i> Angriff starten
                                 </button>
                             </div>
                         </td>
@@ -1293,6 +1299,302 @@
     };
 
     // ============================================
+    // ========== AUTO-ATTACK MODULE (Simplified for Auditors) ==========
+    // ============================================
+
+    window.showAutoAttackModal = async function(scanId, targetIp) {
+        try {
+            const modal = document.getElementById('autoAttackModal');
+            const content = document.getElementById('autoAttackContent');
+            const startBtn = document.getElementById('autoAttackStartBtn');
+
+            // Store context
+            modal.dataset.scanId = scanId;
+            modal.dataset.targetIp = targetIp;
+
+            // Show modal with loading state
+            content.innerHTML = '<div class="text-center" style="padding:2rem"><div class="spinner"></div><p class="text-muted mt-1">Analysiere Dienste und suche passende Exploits...</p></div>';
+            startBtn.disabled = true;
+            startBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Angriff starten';
+            document.getElementById('autoAttackProgress').classList.add('hidden');
+            document.getElementById('autoAttackResult').classList.add('hidden');
+            modal.classList.add('active');
+
+            // Fetch attackable summary from backend
+            const d = await api(`/api/exploits/attackable/${scanId}/${targetIp}`);
+            const services = d.services || [];
+            const attackable = services.filter(s => s.hasExploits);
+            const notAttackable = services.filter(s => !s.hasExploits);
+
+            if (attackable.length === 0) {
+                content.innerHTML = `
+                    <div class="text-center" style="padding:1.5rem">
+                        <i class="bi bi-shield-check" style="font-size:3rem;color:var(--accent-green)"></i>
+                        <h4 class="mt-1">Keine angreifbaren Dienste gefunden</h4>
+                        <p class="text-muted">Für die erkannten Service-Versionen auf <strong>${esc(targetIp)}</strong> gibt es keine passenden Exploits in der Datenbank.</p>
+                        ${notAttackable.length > 0 ? `
+                        <div class="mt-2" style="text-align:left">
+                            <h5 class="mb-1">Erkannte Dienste (keine Exploits verfügbar):</h5>
+                            ${notAttackable.map(s => `
+                                <div style="display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0;border-bottom:1px solid var(--border-color)">
+                                    <span class="badge badge-green"><i class="bi bi-shield-check"></i></span>
+                                    <span><strong>Port ${s.port}</strong> – ${esc(s.service)} ${s.version ? esc(s.version) : ''}</span>
+                                </div>
+                            `).join('')}
+                        </div>` : ''}
+                        <p class="text-muted mt-2" style="font-size:0.85rem"><i class="bi bi-info-circle"></i> Tipp: Synchronisieren Sie die Exploit-Datenbank für aktuelle Exploits.</p>
+                    </div>`;
+                startBtn.style.display = 'none';
+                return;
+            }
+
+            // Show attackable services
+            startBtn.style.display = '';
+            startBtn.disabled = false;
+            content.innerHTML = `
+                <div style="margin-bottom:1rem">
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+                        <i class="bi bi-crosshair" style="font-size:1.5rem;color:var(--accent-red)"></i>
+                        <h4 style="margin:0">Ziel: ${esc(targetIp)}</h4>
+                    </div>
+                    <p class="text-muted" style="margin:0">Es wurden <strong>${attackable.length} angreifbare Dienste</strong> mit passenden Exploits gefunden.</p>
+                </div>
+
+                <h5 class="mb-1" style="color:var(--accent-red)"><i class="bi bi-exclamation-triangle-fill mr-1"></i> Angreifbare Dienste</h5>
+                <div style="border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:1rem">
+                    ${attackable.map(s => {
+                        const sevColors = { critical: 'red', high: 'orange', medium: 'yellow', low: 'blue' };
+                        const topSev = (s.severities || '').split(',')[0] || 'medium';
+                        return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border-color);background:rgba(239,68,68,0.05)">
+                            <div style="display:flex;align-items:center;gap:0.5rem">
+                                <span class="badge badge-red"><i class="bi bi-bullseye"></i></span>
+                                <div>
+                                    <strong>Port ${s.port}</strong> – ${esc(s.service)} ${s.version ? '<code>' + esc(s.version) + '</code>' : ''}
+                                    ${s.product ? '<br><small class="text-muted">' + esc(s.product) + '</small>' : ''}
+                                </div>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:0.5rem">
+                                <span class="badge badge-${sevColors[topSev] || 'yellow'}">${s.exploitCount} Exploit${s.exploitCount > 1 ? 's' : ''}</span>
+                                <span class="badge badge-gray">Confidence: ${s.maxConfidence}%</span>
+                            </div>
+                        </div>`;
+                    }).join('')}
+                </div>
+
+                ${notAttackable.length > 0 ? `
+                <details style="margin-bottom:1rem">
+                    <summary class="text-muted" style="cursor:pointer;font-size:0.85rem"><i class="bi bi-shield-check mr-1"></i>${notAttackable.length} sichere Dienste (keine Exploits)</summary>
+                    <div style="margin-top:0.5rem">
+                        ${notAttackable.map(s => `
+                            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;font-size:0.85rem">
+                                <span class="badge badge-green" style="font-size:0.7rem">OK</span>
+                                <span>Port ${s.port} – ${esc(s.service)} ${s.version ? esc(s.version) : ''}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                </details>` : ''}
+
+                <div style="background:var(--bg-tertiary);border-radius:var(--radius-sm);padding:0.8rem;font-size:0.85rem">
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+                        <i class="bi bi-gear"></i> <strong>Reverse Shell Konfiguration</strong>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.8rem">LHOST (Ihre IP)</label>
+                            <input type="text" id="autoAttackLHOST" class="form-control" value="${window.location.hostname}" style="font-size:0.85rem">
+                        </div>
+                        <div class="form-group" style="margin:0">
+                            <label style="font-size:0.8rem">LPORT (Listener Port)</label>
+                            <input type="number" id="autoAttackLPORT" class="form-control" value="4444" style="font-size:0.85rem">
+                        </div>
+                    </div>
+                </div>
+            `;
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+            document.getElementById('autoAttackModal').classList.remove('active');
+        }
+    };
+
+    window.hideAutoAttackModal = function() {
+        document.getElementById('autoAttackModal').classList.remove('active');
+    };
+
+    window.startAutoAttack = async function() {
+        const modal = document.getElementById('autoAttackModal');
+        const scanId = parseInt(modal.dataset.scanId);
+        const targetIp = modal.dataset.targetIp;
+        const lhost = document.getElementById('autoAttackLHOST')?.value || window.location.hostname;
+        const lport = document.getElementById('autoAttackLPORT')?.value || '4444';
+
+        const startBtn = document.getElementById('autoAttackStartBtn');
+        const progressDiv = document.getElementById('autoAttackProgress');
+        const resultDiv = document.getElementById('autoAttackResult');
+
+        // Disable button, show progress
+        startBtn.disabled = true;
+        startBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Angriff läuft...';
+        progressDiv.classList.remove('hidden');
+        progressDiv.innerHTML = `
+            <div style="padding:1rem;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-top:1rem">
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
+                    <span class="spinner" style="width:18px;height:18px"></span>
+                    <strong id="autoAttackStatusText">Starte automatischen Angriff...</strong>
+                </div>
+                <div class="progress-bar-container" style="height:6px;background:var(--bg-secondary);border-radius:3px;overflow:hidden">
+                    <div id="autoAttackProgressBar" style="width:10%;height:100%;background:var(--accent-red);transition:width 0.5s ease;border-radius:3px"></div>
+                </div>
+                <p id="autoAttackProgressDetail" class="text-muted" style="font-size:0.8rem;margin-top:0.5rem">Analysiere Dienste und bereite Exploits vor...</p>
+            </div>`;
+        resultDiv.classList.add('hidden');
+
+        try {
+            const d = await api('/api/attack-chains/auto-attack', 'POST', {
+                scanId: scanId,
+                targetIp: targetIp,
+                params: { LHOST: lhost, LPORT: lport }
+            });
+
+            if (d.status === 'no_exploits' || d.status === 'no_executable_exploits') {
+                progressDiv.innerHTML = `
+                    <div style="padding:1rem;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                        <i class="bi bi-shield-check" style="font-size:2rem;color:var(--accent-green)"></i>
+                        <h4 class="mt-1">Kein Angriff möglich</h4>
+                        <p class="text-muted">${esc(d.message)}</p>
+                    </div>`;
+                startBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Angriff starten';
+                startBtn.disabled = false;
+                return;
+            }
+
+            // Attack started - monitor execution
+            const execId = d.executionId;
+            currentChainExecId = execId;
+
+            document.getElementById('autoAttackStatusText').textContent = `Angriff läuft... (${d.totalSteps} Schritte)`;
+            document.getElementById('autoAttackProgressBar').style.width = '30%';
+            document.getElementById('autoAttackProgressDetail').textContent = `${d.totalExploits} Exploits für ${d.attackableServices} Dienste werden getestet...`;
+
+            // Poll for results
+            let pollCount = 0;
+            const maxPolls = 60; // Max 60 polls (2 minutes)
+            const pollInterval = setInterval(async () => {
+                pollCount++;
+                try {
+                    const execData = await api(`/api/attack-chains/executions/${execId}`);
+                    const ex = execData.execution || execData;
+                    const results = ex.results ? (typeof ex.results === 'string' ? JSON.parse(ex.results) : ex.results) : [];
+                    const findings = ex.findings ? (typeof ex.findings === 'string' ? JSON.parse(ex.findings) : ex.findings) : [];
+                    const progress = ex.total_steps > 0 ? Math.round((ex.current_step / ex.total_steps) * 100) : 0;
+
+                    document.getElementById('autoAttackProgressBar').style.width = progress + '%';
+                    document.getElementById('autoAttackStatusText').textContent = ex.status === 'completed' ? 'Angriff abgeschlossen' : ex.status === 'failed' ? 'Angriff fehlgeschlagen' : `Schritt ${ex.current_step} von ${ex.total_steps}...`;
+
+                    if (results.length > 0) {
+                        const lastResult = results[results.length - 1];
+                        document.getElementById('autoAttackProgressDetail').textContent = lastResult.name || lastResult.details || '';
+                    }
+
+                    // Check if completed
+                    if (ex.status === 'completed' || ex.status === 'failed' || pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        showAutoAttackResults(ex, findings, results, targetIp);
+                    }
+                } catch (pollErr) {
+                    // Ignore poll errors, keep trying
+                    if (pollCount >= maxPolls) {
+                        clearInterval(pollInterval);
+                        progressDiv.innerHTML = '<p class="text-muted" style="padding:1rem">Zeitüberschreitung. Prüfen Sie die Ergebnisse in der Angriffsketten-Übersicht.</p>';
+                        startBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Angriff starten';
+                        startBtn.disabled = false;
+                    }
+                }
+            }, 2000);
+
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+            progressDiv.innerHTML = `<div style="padding:1rem;color:var(--accent-red)"><i class="bi bi-x-circle"></i> ${esc(e.message)}</div>`;
+            startBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Erneut versuchen';
+            startBtn.disabled = false;
+        }
+    };
+
+    function showAutoAttackResults(execution, findings, results, targetIp) {
+        const progressDiv = document.getElementById('autoAttackProgress');
+        const startBtn = document.getElementById('autoAttackStartBtn');
+
+        // Check for shell session
+        const shellFinding = findings.find(f => f.sessionId && (f.type === 'exploit_success' || f.category === 'Remote Shell'));
+        const exploitSuccesses = findings.filter(f => f.type === 'exploit_success');
+        const vulnerabilities = findings.filter(f => f.type === 'vulnerability');
+        const errors = findings.filter(f => f.type === 'error');
+
+        let html = '';
+
+        if (shellFinding) {
+            // SUCCESS - Shell obtained!
+            html += `
+                <div style="padding:1.5rem;background:rgba(34,197,94,0.1);border:2px solid rgba(34,197,94,0.4);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                    <i class="bi bi-terminal-fill" style="font-size:3rem;color:var(--accent-green)"></i>
+                    <h3 style="color:var(--accent-green);margin:0.5rem 0">Reverse Shell erhalten!</h3>
+                    <p>Zugriff auf <strong>${esc(targetIp)}</strong> über: <strong>${esc(shellFinding.title)}</strong></p>
+                    <p class="text-muted" style="font-size:0.85rem">Session ID: ${shellFinding.sessionId}</p>
+                    <button class="btn btn-primary btn-lg" onclick="hideAutoAttackModal();showShellModal('${shellFinding.sessionId}')" style="margin-top:0.5rem;font-size:1.1rem;padding:0.75rem 2rem">
+                        <i class="bi bi-terminal-fill mr-1"></i> Terminal öffnen
+                    </button>
+                </div>`;
+        } else if (execution.status === 'completed') {
+            // Completed but no shell
+            html += `
+                <div style="padding:1.5rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                    <i class="bi bi-shield-exclamation" style="font-size:3rem;color:var(--accent-yellow)"></i>
+                    <h3 style="color:var(--accent-yellow);margin:0.5rem 0">Angriff abgeschlossen</h3>
+                    <p>Kein Shell-Zugang erhalten. Die getesteten Exploits waren nicht erfolgreich.</p>
+                    <p class="text-muted" style="font-size:0.85rem">${vulnerabilities.length} Schwachstellen erkannt, ${results.length} Schritte ausgeführt.</p>
+                </div>`;
+        } else {
+            // Failed
+            html += `
+                <div style="padding:1.5rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                    <i class="bi bi-x-circle" style="font-size:3rem;color:var(--accent-red)"></i>
+                    <h3 style="color:var(--accent-red);margin:0.5rem 0">Angriff fehlgeschlagen</h3>
+                    <p class="text-muted">${errors.length > 0 ? esc(errors[0].details) : 'Ein unerwarteter Fehler ist aufgetreten.'}</p>
+                </div>`;
+        }
+
+        // Show step results summary
+        if (results.length > 0) {
+            html += `
+                <details style="margin-top:1rem" ${shellFinding ? '' : 'open'}>
+                    <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0"><i class="bi bi-list-check mr-1"></i> Detaillierte Ergebnisse (${results.length} Schritte)</summary>
+                    <div style="margin-top:0.5rem">
+                        ${results.map((r, i) => {
+                            const icon = r.status === 'completed' ? 'bi-check-circle-fill' : 'bi-x-circle-fill';
+                            const color = r.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)';
+                            const hasShell = r.findings && r.findings.some(f => f.type === 'exploit_success');
+                            return `<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border-color)">
+                                <i class="bi ${icon}" style="color:${color};margin-top:2px"></i>
+                                <div style="flex:1">
+                                    <strong>${esc(r.name || 'Schritt ' + (i+1))}</strong>
+                                    ${hasShell ? '<span class="badge badge-green ml-1"><i class="bi bi-terminal"></i> Shell!</span>' : ''}
+                                    ${r.findings && r.findings.length > 0 ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px">${r.findings.map(f => esc(f.title)).join(' · ')}</div>` : ''}
+                                </div>
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </details>`;
+        }
+
+        progressDiv.innerHTML = html;
+        startBtn.innerHTML = '<i class="bi bi-lightning-charge-fill"></i> Erneut angreifen';
+        startBtn.disabled = false;
+
+        // Refresh chain stats
+        loadChainStats();
+        loadChainExecutions();
+    }
+
+    // ============================================
     // ========== ATTACK CHAINS MODULE ==========
     // ============================================
 
@@ -1404,48 +1706,45 @@
                 step.querySelector('[data-field="description"]').value = 'Datenbank-Sicherheitsprüfung';
             }
 
-            // Fetch matched exploits for this scan and add steps
+            // Fetch version-matched exploits for this scan and add steps
             try {
-                const exploitData = await api(`/api/exploits/scan/${scanId}`);
+                const exploitData = await api(`/api/exploits/matched/${scanId}/${targetIp}`);
                 const exploits = exploitData.exploits || [];
 
-                // Filter exploits for this IP and selected ports
+                // Filter exploits for selected ports only
                 const filteredExploits = exploits.filter(ex =>
-                    ex.ip_address === targetIp && targetPorts.includes(ex.port)
+                    targetPorts.includes(ex.port)
                 );
 
-                // Group by port/service to avoid too many steps
+                // Deduplicate and sort by confidence
                 const distinctExploits = [];
                 const seenExploits = new Set();
 
-                // Sort by match_confidence descending
-                filteredExploits.sort((a, b) => b.match_confidence - a.match_confidence);
+                filteredExploits.sort((a, b) => (b.match_confidence || 0) - (a.match_confidence || 0));
 
                 for (const ex of filteredExploits) {
-                    // Only add if high confidence or critical (or at least > 40)
-                    if (ex.match_confidence >= 40 || ex.severity === 'critical' || ex.severity === 'high') {
-                        const key = `${ex.port}-${ex.exploit_id}`;
-                        if (!seenExploits.has(key)) {
-                            seenExploits.add(key);
-                            distinctExploits.push(ex);
-                        }
+                    const key = `${ex.port}-${ex.exploit_id}`;
+                    if (!seenExploits.has(key)) {
+                        seenExploits.add(key);
+                        distinctExploits.push(ex);
                     }
                 }
 
-                // Limit exploits to top 10 to avoid huge chains
-                for (const ex of distinctExploits.slice(0, 10)) {
+                // Limit to top 5 most promising exploits (version-matched)
+                for (const ex of distinctExploits.slice(0, 5)) {
                     addChainStep();
                     step = container.lastElementChild;
-                    step.querySelector('[data-field="name"]').value = `Exploit: ${ex.exploit_title.substring(0, 20)}...`;
+                    const title = ex.exploit_title || ex.title || 'Exploit';
+                    step.querySelector('[data-field="name"]').value = `Exploit: ${title.substring(0, 30)}`;
                     step.querySelector('[data-field="type"]').value = 'exploit';
-                    step.querySelector('[data-field="description"]').value = `${ex.exploit_title} (Port ${ex.port})`;
-                    step.querySelector('[data-field="tool"]').value = `exploit-db (ID: ${ex.exploit_db_id})`;
+                    step.querySelector('[data-field="description"]').value = `${title} (Port ${ex.port}, ${ex.service || ''} ${ex.service_version || ''}) [Confidence: ${ex.match_confidence || '?'}%]`;
+                    step.querySelector('[data-field="tool"]').value = `exploit-db (ID: ${ex.exploit_db_id || ex.exploit_id})`;
                 }
 
                 if (distinctExploits.length > 0) {
-                    showToast('info', 'Exploits gefunden', `${distinctExploits.length} Exploits wurden zur Kette hinzugefügt.`);
-                } else if (exploits.length > 0) {
-                     showToast('info', 'Info', 'Keine Exploits für die ausgewählten Services gefunden.');
+                    showToast('info', 'Exploits gefunden', `${distinctExploits.length} version-kompatible Exploits wurden zur Kette hinzugefügt.`);
+                } else {
+                     showToast('info', 'Info', 'Keine version-kompatiblen Exploits für die ausgewählten Services gefunden. Nutzen Sie den "Angriff starten" Button für eine automatische Analyse.');
                 }
 
             } catch(e) {

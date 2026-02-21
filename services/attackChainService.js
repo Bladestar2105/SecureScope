@@ -102,7 +102,6 @@ class AttackChainService extends EventEmitter {
             }
 
             if (matches) {
-                // Find which ports triggered this chain
                 const matchedPorts = [];
                 for (const pre of preconditions) {
                     const requiredPorts = Array.isArray(pre.port) ? pre.port : [pre.port];
@@ -122,6 +121,117 @@ class AttackChainService extends EventEmitter {
         }
 
         return applicable;
+    }
+
+    /**
+     * NEW: Auto-Attack - Simplified 1-click attack for auditors.
+     * Automatically:
+     * 1. Identifies services with version-matched exploits
+     * 2. Creates an optimized attack chain
+     * 3. Executes only relevant exploits (sorted by confidence/CVSS)
+     * 4. Stops on first successful shell
+     */
+    async autoAttack(scanId, targetIp, userId, params = {}) {
+        const db = getDatabase();
+
+        // 1. Get attackable services summary
+        const services = ExploitService.getAttackableSummary(scanId, targetIp);
+        const attackableServices = services.filter(s => s.hasExploits);
+
+        if (attackableServices.length === 0) {
+            return {
+                executionId: null,
+                status: 'no_exploits',
+                message: `Keine passenden Exploits für ${targetIp} gefunden. Die erkannten Service-Versionen haben keine bekannten Schwachstellen in der Datenbank.`,
+                services: services
+            };
+        }
+
+        // 2. Get all matched exploits for this target, sorted by confidence and CVSS
+        const matchedExploits = ExploitService.getMatchedExploitsForTarget(scanId, targetIp);
+
+        if (matchedExploits.length === 0) {
+            return {
+                executionId: null,
+                status: 'no_exploits',
+                message: `Keine version-kompatiblen Exploits für ${targetIp} gefunden.`,
+                services: services
+            };
+        }
+
+        // 3. Build optimized steps: Recon first, then exploits per service (best first)
+        const steps = [];
+
+        // Recon step
+        steps.push({ name: 'Reconnaissance', type: 'recon', description: `Service-Erkennung für ${targetIp}` });
+
+        // Audit step for each attackable service
+        for (const svc of attackableServices) {
+            steps.push({
+                name: `Audit: ${svc.service} (Port ${svc.port})`,
+                type: 'audit',
+                description: `Konfigurationsprüfung für ${svc.service} ${svc.version || ''}`
+            });
+        }
+
+        // Vuln scan step
+        steps.push({ name: 'Schwachstellen-Scan', type: 'vuln_scan', description: 'CVE-Abgleich der erkannten Dienste' });
+
+        // Exploit steps - only version-matched, sorted by confidence then CVSS
+        const addedExploits = new Set();
+        const maxExploits = 5; // Limit to top 5 most promising exploits
+        let exploitCount = 0;
+
+        for (const ex of matchedExploits) {
+            if (exploitCount >= maxExploits) break;
+            if (addedExploits.has(ex.exploit_id)) continue;
+            // Only include exploits that have code available
+            if (!ex.exploit_code) continue;
+
+            addedExploits.add(ex.exploit_id);
+            steps.push({
+                name: `Exploit: ${ex.exploit_title}`,
+                type: 'exploit',
+                description: `${ex.exploit_title} → Port ${ex.port} (${ex.service || 'unknown'} ${ex.service_version || ''}) [Confidence: ${ex.match_confidence}%]`,
+                exploitId: ex.exploit_id,
+                targetPort: ex.port
+            });
+            exploitCount++;
+        }
+
+        if (exploitCount === 0) {
+            return {
+                executionId: null,
+                status: 'no_executable_exploits',
+                message: `Exploits gefunden aber kein ausführbarer Code verfügbar. Bitte ExploitDB synchronisieren.`,
+                services: services,
+                matchedExploits: matchedExploits.length
+            };
+        }
+
+        // 4. Create the chain in DB
+        const chainName = `Auto-Attack: ${targetIp} (${new Date().toLocaleString('de-DE')})`;
+        const chainId = this.create({
+            name: chainName,
+            description: `Automatisch generiert für ${targetIp}. ${exploitCount} version-kompatible Exploits für ${attackableServices.length} Dienste.`,
+            strategy: 'aggressive',
+            depthLevel: 3,
+            targetServices: attackableServices.map(s => s.service),
+            steps: steps,
+            preconditions: attackableServices.map(s => ({ port: s.port, state: 'open' })),
+            riskLevel: 'high',
+            enabled: true
+        }, userId);
+
+        // 5. Execute the chain
+        const result = await this.executeChain(scanId, chainId, targetIp, null, userId, params);
+
+        return {
+            ...result,
+            attackableServices: attackableServices.length,
+            totalExploits: exploitCount,
+            services: services
+        };
     }
 
     // Execute an attack chain against a target
@@ -148,7 +258,7 @@ class AttackChainService extends EventEmitter {
         (async () => {
             const results = [];
             let currentStep = 0;
-            const dbInner = getDatabase(); // Re-get DB connection for async context if needed (though sync is fine)
+            const dbInner = getDatabase();
 
             try {
                 for (const step of steps) {
@@ -163,7 +273,9 @@ class AttackChainService extends EventEmitter {
                         target: targetIp
                     });
 
-                    const stepResult = await this._executeStep(step, scanId, targetIp, targetPort, chain, params);
+                    // Use step-specific targetPort if available (from auto-attack)
+                    const stepPort = step.targetPort || targetPort;
+                    const stepResult = await this._executeStep(step, scanId, targetIp, stepPort, chain, params);
 
                     results.push({
                         step: currentStep,
@@ -303,7 +415,6 @@ class AttackChainService extends EventEmitter {
             }
 
             case 'enum': {
-                // Service enumeration simulation
                 findings.push({
                     type: 'info',
                     category: 'Enumeration',
@@ -315,7 +426,6 @@ class AttackChainService extends EventEmitter {
             }
 
             case 'auth_test': {
-                // Check if credentials are available for this service
                 const creds = db.prepare(`
                     SELECT * FROM credentials WHERE is_valid = 1 
                     AND (target_scope IS NULL OR target_scope LIKE ? OR target_scope LIKE ?)
@@ -342,14 +452,13 @@ class AttackChainService extends EventEmitter {
             }
 
             case 'vuln_scan': {
-                // Match against vulnerability database
                 const vulns = db.prepare(`
                     SELECT sv.cve_id, sv.title, sv.severity, sv.cvss_score, ce.description
                     FROM scan_vulnerabilities sv
                     LEFT JOIN cve_entries ce ON sv.cve_id = ce.cve_id
                     JOIN scan_results sr ON sv.scan_result_id = sr.id
-                    WHERE sv.scan_id = ? AND sr.ip_address = ? AND sr.port = ?
-                `).all(scanId, targetIp, targetPort);
+                    WHERE sv.scan_id = ? AND sr.ip_address = ? AND (sr.port = ? OR ? IS NULL)
+                `).all(scanId, targetIp, targetPort, targetPort);
 
                 for (const vuln of vulns) {
                     findings.push({
@@ -366,19 +475,32 @@ class AttackChainService extends EventEmitter {
             }
 
             case 'exploit': {
-                // Match against exploit database
-                const exploits = db.prepare(`
-                    SELECT e.*, se.match_confidence FROM scan_exploits se
-                    JOIN exploits e ON se.exploit_id = e.id
-                    JOIN scan_results sr ON se.scan_result_id = sr.id
-                    WHERE se.scan_id = ? AND sr.ip_address = ? AND sr.port = ?
-                    ORDER BY e.cvss_score DESC
-                `).all(scanId, targetIp, targetPort);
+                // OPTIMIZED: If step has a specific exploitId (from auto-attack), use only that exploit
+                // Otherwise fall back to version-filtered scan_exploits
+                let exploits = [];
+
+                if (step.exploitId) {
+                    // Auto-attack mode: specific exploit assigned to this step
+                    const exploit = db.prepare(`
+                        SELECT e.*, se.match_confidence FROM exploits e
+                        LEFT JOIN scan_exploits se ON se.exploit_id = e.id AND se.scan_id = ?
+                        WHERE e.id = ?
+                    `).get(scanId, step.exploitId);
+                    if (exploit) exploits = [exploit];
+                } else {
+                    // Manual chain mode: get version-filtered exploits for this port
+                    exploits = db.prepare(`
+                        SELECT e.*, se.match_confidence FROM scan_exploits se
+                        JOIN exploits e ON se.exploit_id = e.id
+                        JOIN scan_results sr ON se.scan_result_id = sr.id
+                        WHERE se.scan_id = ? AND sr.ip_address = ? AND (sr.port = ? OR ? IS NULL)
+                        ORDER BY se.match_confidence DESC, e.cvss_score DESC
+                    `).all(scanId, targetIp, targetPort, targetPort);
+                }
 
                 let successCount = 0;
 
                 for (const exploit of exploits) {
-                    // Start listener if requested
                     let sessionId = null;
                     let tempFile = null;
 
@@ -388,9 +510,9 @@ class AttackChainService extends EventEmitter {
                         if (!exploitData || !exploitData.code) {
                             findings.push({
                                 type: 'info',
-                                category: 'Exploit Skipped',
-                                title: `Code missing: ${exploit.title}`,
-                                details: 'Exploit code not found locally.',
+                                category: 'Exploit übersprungen',
+                                title: `Kein Code: ${exploit.title}`,
+                                details: 'Exploit-Code nicht lokal verfügbar.',
                                 severity: 'info'
                             });
                             continue;
@@ -405,16 +527,14 @@ class AttackChainService extends EventEmitter {
                         if (lhost === '127.0.0.1' || lhost === 'localhost') {
                              findings.push({
                                 type: 'warning',
-                                category: 'Configuration Warning',
-                                title: `LHOST is loopback`,
-                                details: `Warning: LHOST is set to ${lhost}. Remote shells will not connect back if the target is external.`,
+                                category: 'Konfigurationswarnung',
+                                title: `LHOST ist Loopback`,
+                                details: `Warnung: LHOST ist ${lhost}. Remote Shells werden nicht zurückverbinden wenn das Ziel extern ist.`,
                                 severity: 'low'
                             });
                         }
 
                         let modified = false;
-
-                        // Robust replacement logic
                         const replaceMap = {
                             'LHOST': lhost,
                             'RHOST': targetIp,
@@ -433,21 +553,11 @@ class AttackChainService extends EventEmitter {
                             }
                         }
 
-                        // 2. Variable assignments (e.g. LHOST = "...")
-                        // Simple approach: Replace literal string "LHOST" if it looks like a variable placeholder
-                        // Or just brute force replace common uppercase vars if they exist
+                        // 2. Variable assignments
                         for (const [key, val] of Object.entries(replaceMap)) {
                             if (val) {
-                                // Replace simple occurrences like LHOST="xxx" or LHOST = 'xxx'
-                                // We replace the placeholder key itself
                                 const regex = new RegExp(`\\b${key}\\b`, 'g');
                                 if (regex.test(code)) {
-                                     // This is risky if LHOST is a variable name in code, but typically in exploitdb scripts
-                                     // users are expected to edit these variables.
-                                     // We will assume the script is not using LHOST as a local variable name for logic but as config.
-                                     // A safer way is checking specific patterns users use.
-                                     // But for now, we stick to the provided pattern and expand slightly.
-                                     // The previous logic was: code.replace(/LHOST/g, lhost)
                                      code = code.replace(regex, val);
                                      modified = true;
                                 }
@@ -470,14 +580,13 @@ class AttackChainService extends EventEmitter {
                         }
 
                         // 3. Execute
-                        logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}`);
+                        logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
 
                         let cmd = '';
                         if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
                         else if (exploitData.language === 'ruby') cmd = `ruby "${tempFile}"`;
                         else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
                         else if (exploitData.language === 'c') {
-                            // Compile first
                             const binFile = path.join(tmpDir, 'exploit.bin');
                             await execPromise(`gcc "${tempFile}" -o "${binFile}"`);
                             cmd = `"${binFile}"`;
@@ -485,15 +594,11 @@ class AttackChainService extends EventEmitter {
                             throw new Error(`Unsupported language: ${exploitData.language}`);
                         }
 
-                        // Pass arguments if needed (some scripts take args)
-                        // For now we rely on the hardcoded replacements above
-
                         // Run with timeout
                         await new Promise((resolve, reject) => {
                             exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
                                 if (error) {
                                     logger.warn(`Exploit ${exploit.id} execution error/timeout: ${error.message}`);
-                                    // We don't necessarily reject, just log and finish this step
                                 }
                                 resolve();
                             });
@@ -501,7 +606,6 @@ class AttackChainService extends EventEmitter {
 
                         // 4. Check for Shell
                         if (sessionId) {
-                            // Poll for a few seconds if not already connected
                             let attempts = 0;
                             while (attempts < 5) {
                                 if (ShellService.isConnected(sessionId)) break;
@@ -525,12 +629,18 @@ class AttackChainService extends EventEmitter {
                             } else {
                                 // Cleanup unused session
                                 ShellService.killSession(sessionId);
+                                findings.push({
+                                    type: 'exploit_attempt',
+                                    category: 'Exploit fehlgeschlagen',
+                                    title: `Kein Shell-Zugang: ${exploit.title}`,
+                                    details: `Exploit wurde ausgeführt, aber keine Reverse Shell erhalten.`,
+                                    severity: 'info'
+                                });
                             }
                         } else {
-                             // Blind execution (DoS or other)
                              findings.push({
                                 type: 'exploit_attempt',
-                                category: 'Exploit Executed',
+                                category: 'Exploit ausgeführt',
                                 title: `Exploit ausgeführt: ${exploit.title}`,
                                 details: `Exploit wurde ausgeführt (kein Reverse Shell Listener konfiguriert).`,
                                 severity: 'info'
@@ -539,9 +649,15 @@ class AttackChainService extends EventEmitter {
 
                     } catch (e) {
                         logger.error(`Exploit execution failed for ${exploit.id}:`, e);
+                        findings.push({
+                            type: 'error',
+                            category: 'Exploit-Fehler',
+                            title: `Fehler: ${exploit.title}`,
+                            details: `Ausführung fehlgeschlagen: ${e.message}`,
+                            severity: 'info'
+                        });
                         if (sessionId) ShellService.killSession(sessionId);
                     } finally {
-                        // Cleanup temp file
                         try {
                             if (tempFile) fs.rmSync(path.dirname(tempFile), { recursive: true, force: true });
                         } catch (err) {}
@@ -595,7 +711,6 @@ class AttackChainService extends EventEmitter {
     // Create a custom attack chain
     create(data, userId) {
         const db = getDatabase();
-        // Accept both camelCase and snake_case
         const steps = data.steps || (data.steps_json ? (typeof data.steps_json === 'string' ? JSON.parse(data.steps_json) : data.steps_json) : []);
         const preconditions = data.preconditions || (data.preconditions_json ? (typeof data.preconditions_json === 'string' ? JSON.parse(data.preconditions_json) : data.preconditions_json) : []);
         const targetServices = data.targetServices || (data.target_services ? (typeof data.target_services === 'string' ? JSON.parse(data.target_services) : data.target_services) : []);

@@ -100,6 +100,34 @@ router.get('/:id', requireAuth, (req, res) => {
     }
 });
 
+// ============================================
+// NEW: Auto-Attack endpoint (1-click for auditors)
+// ============================================
+router.post('/auto-attack', requireAuth, requirePermission('scan:start'), async (req, res) => {
+    try {
+        const { scanId, targetIp, params } = req.body;
+        if (!scanId || !targetIp) {
+            return res.status(400).json({ error: 'scanId und targetIp sind erforderlich' });
+        }
+
+        const result = await attackChainService.autoAttack(
+            parseInt(scanId),
+            targetIp,
+            req.session.userId,
+            params || {}
+        );
+
+        if (result.status === 'no_exploits' || result.status === 'no_executable_exploits') {
+            return res.json(result);
+        }
+
+        res.json(result);
+    } catch (err) {
+        logger.error('Error in auto-attack:', err);
+        res.status(500).json({ error: err.message || 'Fehler beim automatischen Angriff' });
+    }
+});
+
 // Execute an attack chain (legacy endpoint)
 router.post('/execute', requireAuth, requirePermission('scan:start'), async (req, res) => {
     try {
@@ -107,7 +135,6 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), async (req
         if (!scanId || !chainId) {
             return res.status(400).json({ error: 'scanId und chainId sind erforderlich' });
         }
-        // Get scan target if targetIp not provided
         let ip = targetIp;
         if (!ip) {
             const { getDatabase } = require('../config/database');
@@ -136,7 +163,6 @@ router.post('/:id/execute', requireAuth, requirePermission('scan:start'), async 
         if (!scanId) {
             return res.status(400).json({ error: 'scanId ist erforderlich' });
         }
-        // Get scan target if targetIp not provided
         let ip = targetIp;
         if (!ip) {
             const { getDatabase } = require('../config/database');
