@@ -29,25 +29,33 @@ router.post('/login', loginLimiter, async (req, res) => {
             return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
         }
 
-        // Set session data
-        req.session.userId = user.id;
-        req.session.username = user.username;
-        req.session.forcePasswordChange = user.forcePasswordChange;
-        req.session.lastActivity = Date.now();
+        // Regenerate session to prevent fixation
+        req.session.regenerate((err) => {
+            if (err) {
+                logger.error('Session regeneration failed:', err);
+                return res.status(500).json({ error: 'Interner Serverfehler' });
+            }
 
-        // Generate CSRF token
-        const csrfToken = generateCsrfToken(req, res);
+            // Set session data
+            req.session.userId = user.id;
+            req.session.username = user.username;
+            req.session.forcePasswordChange = user.forcePasswordChange;
+            req.session.lastActivity = Date.now();
 
-        UserService.logAudit(user.id, 'LOGIN_SUCCESS', {}, req.ip);
+            // Generate CSRF token
+            const csrfToken = generateCsrfToken(req, res);
 
-        res.json({
-            success: true,
-            user: {
-                id: user.id,
-                username: user.username,
-                forcePasswordChange: user.forcePasswordChange
-            },
-            csrfToken
+            UserService.logAudit(user.id, 'LOGIN_SUCCESS', {}, req.ip);
+
+            res.json({
+                success: true,
+                user: {
+                    id: user.id,
+                    username: user.username,
+                    forcePasswordChange: user.forcePasswordChange
+                },
+                csrfToken
+            });
         });
     } catch (err) {
         logger.error('Login error:', err);
