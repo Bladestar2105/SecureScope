@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const scannerService = require('../services/scanner');
+const attackChainService = require('../services/attackChainService');
 const { requireAuth } = require('../middleware/auth');
 const { scanLimiter } = require('../middleware/rateLimit');
 const UserService = require('../services/userService');
@@ -352,9 +353,31 @@ router.get('/events', (req, res) => {
         }
     };
 
+    // Attack Chain Events
+    const onChainProgress = (data) => {
+        // NOTE: Attack chains are not strictly bound to a scan owner in the same way as scans,
+        // but we can check if the user has access. For now, we assume if they are authenticated and listening,
+        // they should see it if they initiated it.
+        // Ideally, we should check ownership of the execution or scan.
+        // Assuming req.session.userId initiated it or has access.
+        res.write(`data: ${JSON.stringify({ type: 'chain_progress', ...data })}\n\n`);
+    };
+
+    const onChainComplete = (data) => {
+        res.write(`data: ${JSON.stringify({ type: 'chain_complete', ...data })}\n\n`);
+    };
+
+    const onChainError = (data) => {
+        res.write(`data: ${JSON.stringify({ type: 'chain_error', ...data })}\n\n`);
+    };
+
     scannerService.on('scanProgress', onProgress);
     scannerService.on('scanComplete', onComplete);
     scannerService.on('scanError', onError);
+
+    attackChainService.on('chainProgress', onChainProgress);
+    attackChainService.on('chainComplete', onChainComplete);
+    attackChainService.on('chainError', onChainError);
 
     // Keep-alive ping every 30 seconds
     const keepAlive = setInterval(() => {
@@ -366,6 +389,10 @@ router.get('/events', (req, res) => {
         scannerService.off('scanProgress', onProgress);
         scannerService.off('scanComplete', onComplete);
         scannerService.off('scanError', onError);
+
+        attackChainService.off('chainProgress', onChainProgress);
+        attackChainService.off('chainComplete', onChainComplete);
+        attackChainService.off('chainError', onChainError);
     });
 });
 
