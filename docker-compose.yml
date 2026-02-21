@@ -10,6 +10,8 @@ services:
       - PORT=3000
       - SESSION_SECRET=${SESSION_SECRET:-change_this_to_a_random_secret_in_production}
       - CSRF_SECRET=${CSRF_SECRET:-change_this_csrf_secret_in_production}
+      - INITIAL_ADMIN_USERNAME=${INITIAL_ADMIN_USERNAME:-admin}
+      - INITIAL_ADMIN_PASSWORD=${INITIAL_ADMIN_PASSWORD}
       - DATABASE_PATH=/app/database/securescope.db
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - SCAN_TIMEOUT=${SCAN_TIMEOUT:-900000}

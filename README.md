@@ -76,11 +76,14 @@ npm start
 ### Erster Login
 
 1. Öffnen Sie `http://localhost:3000` im Browser
-2. Melden Sie sich mit den Standard-Zugangsdaten an:
-   - **Benutzername:** `admin`
-   - **Passwort:** `admin`
-3. Sie werden aufgefordert, das Passwort zu ändern
-4. Nach der Passwortänderung gelangen Sie zum Dashboard
+2. Melden Sie sich mit den Initial-Zugangsdaten an:
+   - **Benutzername:** `admin` (oder wie in `INITIAL_ADMIN_USERNAME` gesetzt)
+   - **Passwort:** Das in `INITIAL_ADMIN_PASSWORD` gesetzte Passwort.
+
+   > **Hinweis:** Wenn kein Passwort via Umgebungsvariable gesetzt wurde, generiert SecureScope beim ersten Start in der Produktion ein zufälliges Passwort und gibt dieses in den Logs aus. In der Entwicklungsumgebung wird standardmäßig `admin` verwendet.
+
+3. Sie werden aufgefordert, das Passwort beim ersten Login zu ändern.
+4. Nach der Passwortänderung gelangen Sie zum Dashboard.
 
 ---
 
@@ -129,6 +132,8 @@ docker run -d \
 | `PORT` | Server-Port | `3000` |
 | `SESSION_SECRET` | Geheimnis für Session-Verschlüsselung | (erforderlich) |
 | `CSRF_SECRET` | Geheimnis für CSRF-Token | (erforderlich) |
+| `INITIAL_ADMIN_USERNAME` | Initialer Admin-Benutzername | `admin` |
+| `INITIAL_ADMIN_PASSWORD` | Initiales Admin-Passwort | (generiert wenn leer) |
 | `DATABASE_PATH` | Pfad zur SQLite-Datenbank | `./database/securescope.db` |
 | `LOG_LEVEL` | Log-Level (error, warn, info, debug) | `info` |
 | `NODE_ENV` | Umgebung (development, production) | `development` |

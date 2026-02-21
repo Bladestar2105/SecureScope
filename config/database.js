@@ -1,6 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const logger = require('../services/logger');
 
@@ -84,13 +85,27 @@ function initializeDatabase() {
     }
 
     // Create default admin user if not exists
-    const adminUser = database.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+    const initialUsername = process.env.INITIAL_ADMIN_USERNAME || 'admin';
+    const adminUser = database.prepare('SELECT id FROM users WHERE username = ?').get(initialUsername);
+
     if (!adminUser) {
+        let initialPassword = process.env.INITIAL_ADMIN_PASSWORD;
+        let isGenerated = false;
+
+        if (!initialPassword) {
+            if (process.env.NODE_ENV === 'production') {
+                initialPassword = crypto.randomBytes(12).toString('hex');
+                isGenerated = true;
+            } else {
+                initialPassword = 'admin';
+            }
+        }
+
         const saltRounds = 10;
-        const passwordHash = bcrypt.hashSync('admin', saltRounds);
+        const passwordHash = bcrypt.hashSync(initialPassword, saltRounds);
         const result = database.prepare(
             'INSERT INTO users (username, password_hash, force_password_change) VALUES (?, ?, ?)'
-        ).run('admin', passwordHash, 1);
+        ).run(initialUsername, passwordHash, 1);
 
         // Assign admin role
         const adminRoleId = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
@@ -99,7 +114,18 @@ function initializeDatabase() {
                 'INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)'
             ).run(result.lastInsertRowid, adminRoleId.id);
         }
-        logger.info('Default admin user created (username: admin, password: admin)');
+
+        if (isGenerated) {
+            logger.warn('***************************************************************');
+            logger.warn('⚠️  NO INITIAL ADMIN PASSWORD PROVIDED!');
+            logger.warn(`⚠️  GENERATED RANDOM PASSWORD: ${initialPassword}`);
+            logger.warn('⚠️  PLEASE CHANGE THIS PASSWORD IMMEDIATELY AFTER LOGIN!');
+            logger.warn('***************************************************************');
+        } else if (initialPassword === 'admin') {
+            logger.warn(`Default admin user created with INSECURE password (username: ${initialUsername}, password: ${initialPassword})`);
+        } else {
+            logger.info(`Default admin user created (username: ${initialUsername})`);
+        }
     }
 
     logger.info('Database initialized successfully');
