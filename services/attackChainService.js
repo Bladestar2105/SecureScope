@@ -188,6 +188,16 @@ class AttackChainService extends EventEmitter {
                         results: results,
                         target: targetIp
                     });
+
+                    // Check for success condition to stop chain
+                    const hasSuccess = stepResult.findings && stepResult.findings.some(f =>
+                        f.type === 'exploit_success' || f.category === 'Remote Shell'
+                    );
+
+                    if (hasSuccess) {
+                        logger.info(`Chain ${chainId} execution stopped early due to success on step ${currentStep}`);
+                        break;
+                    }
                 }
 
                 // Collect all findings

@@ -40,7 +40,7 @@ const assert = require('assert');
 
         await page.route('**/api/scan/results/101', async route => {
             await route.fulfill({
-                status: 200, body: JSON.stringify({ results: [{ip_address:'1.1.1.1', port:80, service:'http'}] })
+                status: 200, body: JSON.stringify({ results: [{ip_address:'1.1.1.1', port:80, service:'http', state: 'open'}] })
             });
         });
 
@@ -64,18 +64,39 @@ const assert = require('assert');
         await page.goto('http://localhost:3000/dashboard');
         await page.waitForTimeout(2000);
 
-        // 3. Trigger "Create Chain from Scan"
-        console.log('Triggering createChainFromScan(101)...');
+        // 3. Trigger "Create Chain for Target"
+        console.log('Triggering showCreateChainForTargetModal(101, "1.1.1.1")...');
 
-        const type = await page.evaluate(() => typeof window.createChainFromScan);
-        console.log('Type of window.createChainFromScan:', type);
+        const type = await page.evaluate(() => typeof window.showCreateChainForTargetModal);
+        console.log('Type of window.showCreateChainForTargetModal:', type);
 
         if (type === 'function') {
-            await page.evaluate(() => window.createChainFromScan(101));
-            console.log('Function executed.');
+            // Open modal
+            await page.evaluate(() => window.showCreateChainForTargetModal(101, '1.1.1.1'));
+            await page.waitForTimeout(500);
+
+            // Verify modal is active and service is present
+            const modalVisible = await page.isVisible('#chainTargetModal');
+            if (!modalVisible) {
+                console.log('FAILURE: Target modal not visible');
+                process.exit(1);
+            }
+
+            // Check if checkbox is rendered (id chk_svc_80)
+            const checkbox = await page.locator('#chk_svc_80');
+            if (await checkbox.count() > 0) {
+                console.log('SUCCESS: Service checkbox found');
+            } else {
+                console.log('FAILURE: Service checkbox NOT found');
+                process.exit(1);
+            }
+
+            // Click "Create Chain" in the modal
+            console.log('Clicking Create Chain...');
+            await page.evaluate(() => window.createChainFromTarget());
             await page.waitForTimeout(1000);
 
-            // Check input values
+            // Check input values in the main chain modal
             const inputs = await page.locator('#chainStepsContainer input[data-field="name"]').all();
             let found = false;
             for (const input of inputs) {
@@ -85,9 +106,9 @@ const assert = require('assert');
             }
 
             if (found) {
-                console.log('SUCCESS: Exploit found in modal inputs');
+                console.log('SUCCESS: Exploit found in generated chain inputs');
             } else {
-                console.log('FAILURE: Exploit not found in modal inputs');
+                console.log('FAILURE: Exploit not found in generated chain inputs');
                 process.exit(1);
             }
         } else {
