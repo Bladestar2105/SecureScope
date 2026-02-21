@@ -187,6 +187,7 @@
             case 'fingerprints': loadFingerprints(); loadFingerprintStats(); break;
             case 'exploits': loadExploits(); loadExploitStats(); break;
             case 'cve': loadCVEs(); loadCVEStats(); break;
+            case 'ghdb': loadGHDB(); loadGHDBStats(); break;
             case 'attack-chains': loadAttackChains(); loadChainStats(); break;
             case 'audits': loadAuditHistory(); break;
             case 'credentials': loadCredentials(); loadCredentialStats(); break;
@@ -957,11 +958,13 @@
     async function loadExploits(page) {
         exPage = page || exPage || 1;
         try {
+            const source = document.getElementById('exploitFilterSource')?.value || '';
             const severity = document.getElementById('exploitFilterSeverity')?.value || '';
             const platform = document.getElementById('exploitFilterPlatform')?.value || '';
             const type = document.getElementById('exploitFilterType')?.value || '';
             const search = document.getElementById('exploitFilterSearch')?.value || '';
             let url = `/api/exploits?page=${exPage}&limit=25`;
+            if (source) url += `&source=${encodeURIComponent(source)}`;
             if (severity) url += `&severity=${severity}`;
             if (platform) url += `&platform=${encodeURIComponent(platform)}`;
             if (type) url += `&type=${encodeURIComponent(type)}`;
@@ -973,8 +976,13 @@
             const pag = d.pagination || {};
 
             if (exps.length > 0) {
-                tbody.innerHTML = exps.map(ex => `<tr>
-                    <td><code>${esc(ex.exploit_db_id || '-')}</code><br><small class="text-muted">${esc(ex.cve_id || '')}</small></td>
+                tbody.innerHTML = exps.map(ex => {
+                    const srcBadge = ex.source === 'metasploit' ? '<span class="badge badge-orange">MSF</span>' :
+                                     ex.source === 'exploit-db' ? '<span class="badge badge-red">EDB</span>' :
+                                     `<span class="badge badge-gray">${esc(ex.source || 'local')}</span>`;
+
+                    return `<tr>
+                    <td><code>${esc(ex.exploit_db_id || ex.id)}</code><br><small class="text-muted">${esc(ex.cve_id || '')}</small></td>
                     <td><strong>${esc(ex.title)}</strong></td>
                     <td>${esc(ex.service_name || '-')}</td>
                     <td>${ex.port || '-'}</td>
@@ -983,6 +991,7 @@
                     <td>${severityBadge(ex.severity)}</td>
                     <td>${ex.cvss_score || '-'}</td>
                     <td><span class="badge badge-${ex.reliability === 'excellent' || ex.reliability === 'verified' ? 'green' : ex.reliability === 'tested' || ex.reliability === 'good' ? 'blue' : 'yellow'}">${esc(ex.reliability || '-')}</span></td>
+                    <td>${srcBadge}</td>
                     <td>
                         <div class="d-flex gap-1">
                             <button class="btn btn-outline btn-sm" onclick="showExploitDetail(${ex.id})" title="Details"><i class="bi bi-eye"></i></button>
@@ -991,7 +1000,8 @@
                             <button class="btn btn-danger btn-sm" onclick="deleteExploit(${ex.id})" title="Löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
-                </tr>`).join('');
+                </tr>`;
+                }).join('');
             } else {
                 tbody.innerHTML = '<tr><td colspan="9" class="text-center text-muted">Keine Exploits gefunden</td></tr>';
             }
@@ -2421,6 +2431,177 @@
             document.querySelectorAll('.modal-overlay.active').forEach(m => m.classList.remove('active'));
         }
     });
+
+    // ============================================
+    // ========== GOOGLE HACKING DB MODULE ==========
+    // ============================================
+    let ghdbPage = 1;
+
+    async function loadGHDBStats() {
+        try {
+            const d = await api('/api/ghdb/stats');
+            document.getElementById('ghdbStatTotal').textContent = d.total || 0;
+            document.getElementById('ghdbStatCats').textContent = (d.byCategory || []).length || 0;
+            document.getElementById('ghdbStatLastSync').textContent = d.lastSync ? formatDate(d.lastSync) : 'Nie';
+
+            // Populate category filter
+            const catSelect = document.getElementById('ghdbFilterCategory');
+            if (catSelect && d.byCategory) {
+                const currentVal = catSelect.value;
+                catSelect.innerHTML = '<option value="">Alle</option>';
+                d.byCategory.forEach(c => {
+                    catSelect.innerHTML += `<option value="${esc(c.category)}">${esc(c.category)} (${c.count})</option>`;
+                });
+                if (currentVal) catSelect.value = currentVal;
+            }
+        } catch (e) {}
+    }
+
+    async function loadGHDB(page) {
+        ghdbPage = page || ghdbPage || 1;
+        const loadEl = document.getElementById('ghdbLoading');
+        const emptyEl = document.getElementById('ghdbEmpty');
+        try {
+            if (loadEl) loadEl.classList.remove('hidden');
+            if (emptyEl) emptyEl.classList.add('hidden');
+
+            const category = document.getElementById('ghdbFilterCategory')?.value || '';
+            const search = document.getElementById('ghdbFilterSearch')?.value || '';
+            let url = `/api/ghdb/search?page=${ghdbPage}&limit=25`;
+            if (category) url += `&category=${encodeURIComponent(category)}`;
+            if (search) url += `&search=${encodeURIComponent(search)}`;
+
+            const d = await api(url);
+            const tbody = document.getElementById('ghdbTableBody');
+            const entries = d.entries || [];
+            const pag = d.pagination || {};
+
+            if (entries.length > 0) {
+                tbody.innerHTML = entries.map(e => `<tr>
+                    <td><code>${esc(e.ghdb_id || '-')}</code></td>
+                    <td><span class="badge badge-purple">${esc(e.category || '-')}</span></td>
+                    <td><code class="text-sm" style="display:block;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(e.query)}">${esc(e.query)}</code></td>
+                    <td>${esc((e.short_description || e.textual_description || '').substring(0, 80))}</td>
+                    <td>${esc(e.date || '-')}</td>
+                    <td>
+                        <a href="https://www.google.com/search?q=${encodeURIComponent(e.query)}" target="_blank" class="btn btn-outline btn-sm" title="Auf Google suchen"><i class="bi bi-google"></i></a>
+                    </td>
+                </tr>`).join('');
+                if (emptyEl) emptyEl.classList.add('hidden');
+            } else {
+                tbody.innerHTML = '';
+                if (emptyEl) emptyEl.classList.remove('hidden');
+            }
+
+            if (loadEl) loadEl.classList.add('hidden');
+            renderPagination('ghdbPagination', pag, (p) => loadGHDB(p));
+        } catch (e) {
+            if (loadEl) loadEl.classList.add('hidden');
+            console.error('GHDB load error:', e);
+        }
+    }
+
+    window.loadGHDB = function(p) { return loadGHDB(p); };
+    window.loadGHDBStats = function() { return loadGHDBStats(); };
+
+    window.syncGHDB = async function () {
+        const btn = document.getElementById('ghdbSyncBtn');
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Sync GHDB...';
+
+        const progDiv = document.getElementById('ghdbSyncProgress');
+        const progBar = document.getElementById('ghdbSyncProgressBar');
+        const progPct = document.getElementById('ghdbSyncProgressPct');
+        const progMsg = document.getElementById('ghdbSyncProgressMsg');
+        const statusDiv = document.getElementById('ghdbSyncStatus');
+        if (progDiv) progDiv.classList.remove('hidden');
+        if (statusDiv) statusDiv.classList.add('hidden');
+
+        let sse = null;
+        try {
+            sse = new EventSource('/api/db-update/progress/ghdb');
+            sse.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.percent >= 0 && progBar) progBar.style.width = data.percent + '%';
+                    if (progPct) progPct.textContent = data.percent >= 0 ? data.percent + '%' : '...';
+                    if (progMsg) progMsg.textContent = data.message || '';
+                    if (data.phase === 'done') {
+                        if (statusDiv) { statusDiv.classList.remove('hidden'); document.getElementById('ghdbSyncStatusText').textContent = data.message; }
+                        if (progDiv) progDiv.classList.add('hidden');
+                        if (sse) sse.close();
+                        btn.disabled = false; btn.innerHTML = origText;
+                        loadGHDB(); loadGHDBStats();
+                    } else if (data.phase === 'error') {
+                        showToast('error', 'Sync-Fehler', data.message);
+                        if (progDiv) progDiv.classList.add('hidden');
+                        if (sse) sse.close();
+                        btn.disabled = false; btn.innerHTML = origText;
+                    }
+                } catch (err) {}
+            };
+            sse.onerror = () => { if (sse) sse.close(); };
+        } catch (e) {}
+
+        try {
+            await api('/api/db-update/sync/ghdb', 'POST');
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+            if (progDiv) progDiv.classList.add('hidden');
+            btn.disabled = false; btn.innerHTML = origText;
+            if (sse) sse.close();
+        }
+    };
+
+    window.syncMetasploit = async function () {
+        const btn = document.getElementById('msfSyncBtn');
+        const origText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner"></span> Sync MSF...';
+
+        const progDiv = document.getElementById('msfSyncProgress');
+        const progBar = document.getElementById('msfSyncProgressBar');
+        const progPct = document.getElementById('msfSyncProgressPct');
+        const progMsg = document.getElementById('msfSyncProgressMsg');
+
+        if (progDiv) progDiv.classList.remove('hidden');
+
+        let sse = null;
+        try {
+            sse = new EventSource('/api/db-update/progress/metasploit');
+            sse.onmessage = (e) => {
+                try {
+                    const data = JSON.parse(e.data);
+                    if (data.percent >= 0 && progBar) progBar.style.width = data.percent + '%';
+                    if (progPct) progPct.textContent = data.percent >= 0 ? data.percent + '%' : '...';
+                    if (progMsg) progMsg.textContent = data.message || '';
+                    if (data.phase === 'done') {
+                        if (progDiv) progDiv.classList.add('hidden');
+                        if (sse) sse.close();
+                        btn.disabled = false; btn.innerHTML = origText;
+                        loadExploits(); loadExploitStats();
+                        showToast('success', 'Fertig', data.message);
+                    } else if (data.phase === 'error') {
+                        showToast('error', 'Sync-Fehler', data.message);
+                        if (progDiv) progDiv.classList.add('hidden');
+                        if (sse) sse.close();
+                        btn.disabled = false; btn.innerHTML = origText;
+                    }
+                } catch (err) {}
+            };
+            sse.onerror = () => { if (sse) sse.close(); };
+        } catch (e) {}
+
+        try {
+            await api('/api/db-update/sync/metasploit', 'POST');
+        } catch (e) {
+            showToast('error', 'Fehler', e.message);
+            if (progDiv) progDiv.classList.add('hidden');
+            btn.disabled = false; btn.innerHTML = origText;
+            if (sse) sse.close();
+        }
+    };
 
     init();
 })();

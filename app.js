@@ -25,6 +25,7 @@ const attackChainRoutes = require('./routes/attackChains');
 const auditRoutes = require('./routes/audits');
 const credentialRoutes = require('./routes/credentials');
 const dbUpdateRoutes = require('./routes/dbUpdate');
+const ghdbRoutes = require('./routes/ghdb');
 
 const app = express();
 
@@ -103,6 +104,7 @@ app.use('/api/attack-chains', attackChainRoutes);
 app.use('/api/audits', auditRoutes);
 app.use('/api/credentials', credentialRoutes);
 app.use('/api/db-update', dbUpdateRoutes);
+app.use('/api/ghdb', ghdbRoutes);
 
 // Serve login page as default
 app.get('/', (req, res) => {

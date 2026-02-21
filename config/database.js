@@ -38,6 +38,26 @@ function initializeDatabase() {
         }
     }
 
+    // Migration: Ensure exploits table has new columns (source, source_url, verified)
+    try {
+        const tableInfo = database.pragma('table_info(exploits)');
+        const columns = tableInfo.map(c => c.name);
+        if (!columns.includes('source')) {
+            logger.info('Migrating exploits table: Adding source column');
+            database.prepare("ALTER TABLE exploits ADD COLUMN source TEXT DEFAULT 'local'").run();
+        }
+        if (!columns.includes('source_url')) {
+            logger.info('Migrating exploits table: Adding source_url column');
+            database.prepare("ALTER TABLE exploits ADD COLUMN source_url TEXT").run();
+        }
+        if (!columns.includes('verified')) {
+            logger.info('Migrating exploits table: Adding verified column');
+            database.prepare("ALTER TABLE exploits ADD COLUMN verified BOOLEAN DEFAULT 0").run();
+        }
+    } catch (err) {
+        logger.error(`Migration error for exploits table: ${err.message}`);
+    }
+
     // Seed default roles
     const adminRole = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
     if (!adminRole) {
