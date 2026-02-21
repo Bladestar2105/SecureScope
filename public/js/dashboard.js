@@ -427,22 +427,50 @@
             const results = d.results || [];
             const tbody = document.getElementById('detailResultsBody');
             if (results.length > 0) {
-                tbody.innerHTML = results.map(r => {
-                    let svcInfo = esc(r.service || '-');
-                    if (r.banner) {
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
-                    } else if (r.service_product) {
-                        let ver = r.service_product;
-                        if (r.service_version) ver += ' ' + r.service_version;
-                        svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
-                    }
-                    const osInfo = r.os_name ? `<span style="font-size:.75rem;color:var(--text-secondary)" title="OS Detection">${esc(r.os_name)}</span>` : '';
-                    return `<tr>
-                    <td>${esc(r.ip_address)}${osInfo ? '<br>' + osInfo : ''}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
-                    <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
-                    <td>${riskBadge(r.risk_level)}</td>
-                </tr>`;
-                }).join('');
+                // Group by IP
+                const grouped = {};
+                results.forEach(r => {
+                    if (!grouped[r.ip_address]) grouped[r.ip_address] = [];
+                    grouped[r.ip_address].push(r);
+                });
+
+                let html = '';
+                for (const [ip, ports] of Object.entries(grouped)) {
+                    // Find first OS info
+                    const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
+
+                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
+                        <td colspan="6" style="padding:0.75rem 1rem">
+                            <div class="d-flex justify-between align-center">
+                                <div>
+                                    <strong style="font-size:1rem">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                </div>
+                                <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
+                                    <i class="bi bi-diagram-3"></i> Chain erstellen
+                                </button>
+                            </div>
+                        </td>
+                    </tr>`;
+
+                    html += ports.map(r => {
+                        let svcInfo = esc(r.service || '-');
+                        if (r.banner) {
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary);display:inline-block;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${esc(r.banner)}">${esc(r.banner)}</span>`;
+                        } else if (r.service_product) {
+                            let ver = r.service_product;
+                            if (r.service_version) ver += ' ' + r.service_version;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                        }
+
+                        return `<tr>
+                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
+                        <td>${riskBadge(r.risk_level)}</td>
+                    </tr>`;
+                    }).join('');
+                }
+                tbody.innerHTML = html;
             } else {
                 tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted">Keine Ergebnisse</td></tr>';
             }
