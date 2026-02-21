@@ -709,7 +709,7 @@ async function syncGHDB(userId) {
 
         database.prepare("DELETE FROM ghdb_entries").run();
         const insertStmt = database.prepare(`
-            INSERT INTO ghdb_entries (ghdb_id, query, category, short_description, textual_description, date, author)
+            INSERT OR REPLACE INTO ghdb_entries (ghdb_id, query, category, short_description, textual_description, date, author)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         `);
 
