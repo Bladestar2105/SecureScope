@@ -1,12 +1,12 @@
 const { getDatabase } = require('../config/database');
 const crypto = require('crypto');
 const logger = require('./logger');
-const { CREDENTIAL_SECRET } = require('../config/security');
+const { CREDENTIAL_SECRET, CREDENTIAL_SALT } = require('../config/security');
 
 // Encryption key derived from environment or fallback
 const ENCRYPTION_KEY = crypto.scryptSync(
     CREDENTIAL_SECRET,
-    'securescope-salt-v1', 32
+    CREDENTIAL_SALT, 32
 );
 const IV_LENGTH = 16;
 const ALGORITHM = 'aes-256-gcm';
