@@ -142,7 +142,7 @@ router.get('/history', requireAuth, (req, res) => {
 // ============================================
 // Get database statistics
 // ============================================
-router.get('/stats', requireAuth, (req, res) => {
+router.get('/stats', requireAuth, async (req, res) => {
     try {
         const db = getDatabase();
         const stats = {
@@ -158,7 +158,7 @@ router.get('/stats', requireAuth, (req, res) => {
                 bySeverity: db.prepare('SELECT severity, COUNT(*) as count FROM exploits GROUP BY severity').all(),
                 lastUpdate: db.prepare("SELECT MAX(updated_at) as last FROM exploits").get().last,
                 lastSync: db.prepare("SELECT completed_at FROM db_update_log WHERE database_type = 'exploits' AND status = 'completed' ORDER BY completed_at DESC LIMIT 1").get()?.completed_at,
-                repoStats: ExploitDbSyncService.getRepoStats()
+                repoStats: await ExploitDbSyncService.getRepoStats()
             },
             cve: {
                 total: db.prepare('SELECT COUNT(*) as c FROM cve_entries').get().c,
@@ -294,9 +294,9 @@ router.get('/exploits/code/:id', requireAuth, (req, res) => {
 });
 
 // Get ExploitDB repo stats
-router.get('/exploits/repo-stats', requireAuth, (req, res) => {
+router.get('/exploits/repo-stats', requireAuth, async (req, res) => {
     try {
-        const stats = ExploitDbSyncService.getRepoStats();
+        const stats = await ExploitDbSyncService.getRepoStats();
         res.json(stats);
     } catch (err) {
         logger.error('Error fetching repo stats:', err);
