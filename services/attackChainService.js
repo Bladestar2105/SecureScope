@@ -546,6 +546,54 @@ class AttackChainService extends EventEmitter {
 
                             // Convert raw_input -> input
                             code = code.replace(/raw_input\(/g, 'input(');
+
+                            // Patch Paramiko: Handle _client_handler_table issue in newer Paramiko versions
+                            if (code.includes('paramiko.auth_handler.AuthHandler._client_handler_table')) {
+                                // Add import if missing
+                                if (!code.includes('import inspect')) {
+                                    code = 'import inspect\n' + code;
+                                }
+                                // Monkeypatch property to allow subscription (rough workaround)
+                                const patch = `
+try:
+    if isinstance(paramiko.auth_handler.AuthHandler._client_handler_table, property):
+        # Paramiko > 2.x makes this a property. We overwrite it with the underlying dict
+        # so that exploits using dict syntax (table['service_accept']) work again.
+        # This is required for CVE-2018-10933 exploits.
+        try:
+            auth_handler = paramiko.auth_handler.AuthHandler
+            # Access the private property getter to retrieve the dict or reconstruct it
+            # Since fget might be bound or complex, we manually reconstruct the critical part
+            # This is the safest way to ensure compatibility without relying on internal API stability
+            auth_handler._client_handler_table = {
+                'service_accept': auth_handler._handler_table['service_accept'],
+                'userauth_success': auth_handler._handler_table['userauth_success']
+            }
+        except:
+            pass
+except:
+    pass
+`;
+                                code = code.replace(/import paramiko/g, 'import paramiko\n' + patch);
+                            }
+                        }
+
+                        // Inject common C headers if missing
+                        if (exploitData.language === 'c') {
+                            const commonHeaders = [
+                                '<stdlib.h>', '<string.h>', '<unistd.h>',
+                                '<arpa/inet.h>', '<sys/socket.h>', '<netinet/in.h>',
+                                '<stdio.h>', '<sys/types.h>'
+                            ];
+                            let includes = '';
+                            for (const h of commonHeaders) {
+                                if (!code.includes(h)) {
+                                    includes += `#include ${h}\n`;
+                                }
+                            }
+                            if (includes) {
+                                code = includes + '\n' + code;
+                            }
                         }
                         const lhost = params.LHOST || '127.0.0.1';
                         const lport = params.LPORT ? parseInt(params.LPORT) : null;
@@ -593,12 +641,24 @@ class AttackChainService extends EventEmitter {
 
                         // Write temp file
                         const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'exploit-'));
-                        const ext = exploitData.language === 'python' ? '.py' :
-                                    exploitData.language === 'ruby' ? '.rb' :
-                                    exploitData.language === 'bash' ? '.sh' :
-                                    exploitData.language === 'c' ? '.c' : '.txt';
+                        let ext = '.txt';
+                        let filename = 'exploit';
 
-                        tempFile = path.join(tmpDir, `exploit${ext}`);
+                        if (exploitData.language === 'python') ext = '.py';
+                        else if (exploitData.language === 'ruby') ext = '.rb';
+                        else if (exploitData.language === 'bash') ext = '.sh';
+                        else if (exploitData.language === 'perl') ext = '.pl';
+                        else if (exploitData.language === 'c') ext = '.c';
+                        else if (exploitData.language === 'java') {
+                            ext = '.java';
+                            // Extract class name
+                            const match = code.match(/public\s+class\s+(\w+)/);
+                            if (match && match[1]) {
+                                filename = match[1];
+                            }
+                        }
+
+                        tempFile = path.join(tmpDir, `${filename}${ext}`);
                         fs.writeFileSync(tempFile, code);
 
                         // 2. Start Listener (if LPORT provided)
@@ -613,9 +673,18 @@ class AttackChainService extends EventEmitter {
                         if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
                         else if (exploitData.language === 'ruby') cmd = `ruby "${tempFile}"`;
                         else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
+                        else if (exploitData.language === 'perl') cmd = `perl "${tempFile}"`;
+                        else if (exploitData.language === 'java') {
+                            // Compile then run
+                            const classPath = tmpDir;
+                            await execPromise(`javac "${tempFile}"`);
+                            // Run java with classpath
+                            cmd = `java -cp "${classPath}" ${filename}`;
+                        }
                         else if (exploitData.language === 'c') {
                             const binFile = path.join(tmpDir, 'exploit.bin');
-                            await execPromise(`gcc "${tempFile}" -o "${binFile}"`);
+                            // Use lenient flags: -w (no warnings), -fno-stack-protector (often needed for buffer overflow exploits), -z execstack
+                            await execPromise(`gcc -w -fno-stack-protector -z execstack "${tempFile}" -o "${binFile}"`);
                             cmd = `"${binFile}"`;
                         } else {
                             throw new Error(`Unsupported language: ${exploitData.language}`);
