@@ -2,6 +2,7 @@ const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
 const bcrypt = require('bcrypt');
+const crypto = require('crypto');
 const logger = require('../services/logger');
 
 const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'database', 'securescope.db');
@@ -84,13 +85,26 @@ function initializeDatabase() {
     }
 
     // Create default admin user if not exists
-    const adminUser = database.prepare('SELECT id FROM users WHERE username = ?').get('admin');
+    const adminUsername = process.env.INITIAL_ADMIN_USERNAME || 'admin';
+    const adminUser = database.prepare('SELECT id FROM users WHERE username = ?').get(adminUsername);
     if (!adminUser) {
+        let adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
+        let isGenerated = false;
+
+        if (!adminPassword) {
+            if (process.env.NODE_ENV === 'production') {
+                adminPassword = crypto.randomBytes(6).toString('hex'); // 12 characters
+                isGenerated = true;
+            } else {
+                adminPassword = 'admin';
+            }
+        }
+
         const saltRounds = 10;
-        const passwordHash = bcrypt.hashSync('admin', saltRounds);
+        const passwordHash = bcrypt.hashSync(adminPassword, saltRounds);
         const result = database.prepare(
             'INSERT INTO users (username, password_hash, force_password_change) VALUES (?, ?, ?)'
-        ).run('admin', passwordHash, 1);
+        ).run(adminUsername, passwordHash, 1);
 
         // Assign admin role
         const adminRoleId = database.prepare('SELECT id FROM roles WHERE name = ?').get('admin');
@@ -99,7 +113,16 @@ function initializeDatabase() {
                 'INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)'
             ).run(result.lastInsertRowid, adminRoleId.id);
         }
-        logger.info('Default admin user created (username: admin, password: admin)');
+
+        if (isGenerated) {
+            logger.info('================================================================');
+            logger.info(`DEFAULT ADMIN USER CREATED: ${adminUsername}`);
+            logger.info(`GENERATED PASSWORD: ${adminPassword}`);
+            logger.info('PLEASE CHANGE THIS PASSWORD IMMEDIATELY AFTER LOGIN!');
+            logger.info('================================================================');
+        } else {
+            logger.info(`Default admin user created (username: ${adminUsername}, password: ${adminPassword})`);
+        }
     }
 
     logger.info('Database initialized successfully');
