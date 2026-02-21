@@ -1,7 +1,7 @@
 /**
  * Sync Worker - Runs heavy import tasks in a separate process
  * Usage: node syncWorker.js <type> <userId>
- * Types: cve, fingerprints, exploits
+ * Types: cve, fingerprints, exploits, ghdb, metasploit
  * 
  * Optimized for:
  * - Disk efficiency: CVE sync extracts year-by-year, cleaning as it goes
@@ -15,6 +15,7 @@ const fs = require('fs');
 const https = require('https');
 const http = require('http');
 const { execSync } = require('child_process');
+const { XMLParser } = require('fast-xml-parser');
 
 const Database = require('better-sqlite3');
 const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'database', 'securescope.db');
@@ -647,6 +648,273 @@ async function syncExploits(userId) {
 }
 
 // ============================================
+// GHDB SYNC (Google Hacking Database)
+// ============================================
+async function syncGHDB(userId) {
+    const EXPLOITDB_DIR = path.join(DATA_DIR, 'exploitdb');
+    ensureDir(DATA_DIR);
+    const database = getDb();
+
+    // Ensure GHDB table
+    database.exec(`
+        CREATE TABLE IF NOT EXISTS ghdb_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ghdb_id TEXT UNIQUE,
+            query TEXT,
+            category TEXT,
+            short_description TEXT,
+            textual_description TEXT,
+            date TEXT,
+            author TEXT,
+            source TEXT DEFAULT 'ghdb',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+    try {
+        database.exec('CREATE INDEX IF NOT EXISTS idx_ghdb_category ON ghdb_entries(category)');
+        database.exec('CREATE INDEX IF NOT EXISTS idx_ghdb_query ON ghdb_entries(query)');
+    } catch {}
+
+    const countBefore = database.prepare('SELECT COUNT(*) as c FROM ghdb_entries').get().c;
+    const logEntry = database.prepare(`
+        INSERT INTO db_update_log (database_type, source, entries_before, status, triggered_by)
+        VALUES ('ghdb', 'exploit-db/ghdb.xml', ?, 'running', ?)
+    `).run(countBefore, userId);
+    const logId = logEntry.lastInsertRowid;
+
+    try {
+        // Ensure ExploitDB is cloned (usually handled by exploits sync, but check here)
+        if (!fs.existsSync(path.join(EXPLOITDB_DIR, '.git'))) {
+            emit('download', 5, 'Klone ExploitDB für GHDB...');
+            execSafe(`git clone --depth 1 "https://gitlab.com/exploit-database/exploitdb.git" "${EXPLOITDB_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+        } else {
+             // Optional: Pull updates if we want to be strict, but syncExploits usually handles it.
+             // We can skip pull here to save time if user just ran exploit sync.
+        }
+
+        let xmlPath = path.join(EXPLOITDB_DIR, 'ghdb.xml');
+        if (!fs.existsSync(xmlPath)) {
+            // Check subdir
+            const sub = path.join(EXPLOITDB_DIR, 'ghdb_xml', 'ghdb.xml');
+            if (fs.existsSync(sub)) xmlPath = sub;
+            else throw new Error('ghdb.xml nicht gefunden in ExploitDB Repo');
+        }
+
+        emit('parse', 20, 'Parse GHDB XML...');
+        const xmlData = fs.readFileSync(xmlPath, 'utf8');
+        const parser = new XMLParser({ ignoreAttributes: false });
+        const jsonObj = parser.parse(xmlData);
+
+        const entries = jsonObj?.ghdb?.entry || [];
+        emit('parse', 30, `${entries.length} GHDB Einträge gefunden. Importiere...`);
+
+        database.prepare("DELETE FROM ghdb_entries").run();
+        const insertStmt = database.prepare(`
+            INSERT INTO ghdb_entries (ghdb_id, query, category, short_description, textual_description, date, author)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        let added = 0;
+        const BATCH = 500;
+        const batchList = [];
+
+        // Helper to get text safely
+        const getVal = (v) => (typeof v === 'string' ? v : (v && v['#text'] ? v['#text'] : ''));
+
+        for (const entry of entries) {
+            batchList.push({
+                id: getVal(entry.id),
+                query: getVal(entry.query),
+                category: getVal(entry.category),
+                short: getVal(entry.short_description),
+                desc: getVal(entry.textual_description),
+                date: getVal(entry.date),
+                author: getVal(entry.author)
+            });
+
+            if (batchList.length >= BATCH) {
+                database.transaction((items) => {
+                    for (const i of items) {
+                        insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
+                        added++;
+                    }
+                })(batchList);
+                batchList.length = 0;
+            }
+        }
+
+        if (batchList.length > 0) {
+            database.transaction((items) => {
+                for (const i of items) {
+                    insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
+                    added++;
+                }
+            })(batchList);
+        }
+
+        const countAfter = database.prepare('SELECT COUNT(*) as c FROM ghdb_entries').get().c;
+        database.prepare(`UPDATE db_update_log SET entries_added = ?, entries_updated = 0, entries_after = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(added, countAfter, logId);
+
+        emit('done', 100, `Fertig! ${added} GHDB Einträge importiert.`, { before: countBefore, added, after: countAfter });
+
+    } catch (err) {
+        database.prepare(`UPDATE db_update_log SET status = 'error', error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(err.message, logId);
+        emit('error', 0, `Fehler: ${err.message}`);
+        process.exit(1);
+    }
+}
+
+// ============================================
+// METASPLOIT SYNC
+// ============================================
+async function syncMetasploit(userId) {
+    const MSF_DIR = path.join(DATA_DIR, 'metasploit');
+    ensureDir(DATA_DIR);
+    const database = getDb();
+
+    const countBefore = database.prepare("SELECT COUNT(*) as c FROM exploits WHERE source = 'metasploit'").get().c;
+    const logEntry = database.prepare(`
+        INSERT INTO db_update_log (database_type, source, entries_before, status, triggered_by)
+        VALUES ('exploits', 'rapid7/metasploit-framework (GitHub)', ?, 'running', ?)
+    `).run(countBefore, userId);
+    const logId = logEntry.lastInsertRowid;
+
+    try {
+        if (fs.existsSync(path.join(MSF_DIR, '.git'))) {
+            emit('download', 5, 'Aktualisiere Metasploit Framework (git pull)...');
+            try {
+                execSafe(`cd "${MSF_DIR}" && git pull --ff-only`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
+            } catch (err) {
+                emit('download', 10, 'Git pull fehlgeschlagen, versuche Reset...');
+                execSafe(`cd "${MSF_DIR}" && git fetch origin && git reset --hard origin/master`, { maxBuffer: 50 * 1024 * 1024, timeout: 300000 });
+            }
+        } else {
+            emit('download', 5, 'Klone Metasploit Framework (Shallow)...');
+            // Clone only modules folder if possible? No, partial clone is complex. Shallow clone of full repo.
+            execSafe(`git clone --depth 1 "https://github.com/rapid7/metasploit-framework.git" "${MSF_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+        }
+        emit('download', 40, 'Repository bereit. Suche Module...');
+
+        const modulesDir = path.join(MSF_DIR, 'modules');
+        if (!fs.existsSync(modulesDir)) throw new Error('Modules directory not found');
+
+        // Clean old MSF entries
+        database.prepare("DELETE FROM exploits WHERE source = 'metasploit'").run();
+
+        const insertStmt = database.prepare(`
+            INSERT INTO exploits (exploit_db_id, cve_id, title, description, platform, exploit_type,
+                service_name, service_version_min, service_version_max, port, severity, cvss_score,
+                reliability, source, source_url, exploit_code, verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, 'metasploit', ?, ?, 1)
+        `);
+
+        // Walk function
+        async function* walk(dir) {
+            const files = fs.readdirSync(dir, { withFileTypes: true });
+            for (const dirent of files) {
+                const res = path.resolve(dir, dirent.name);
+                if (dirent.isDirectory()) {
+                    yield* walk(res);
+                } else if (res.endsWith('.rb')) {
+                    yield res;
+                }
+            }
+        }
+
+        let added = 0;
+        const BATCH = 500;
+        let batch = [];
+        let count = 0;
+
+        for await (const file of walk(modulesDir)) {
+            count++;
+            if (count % 1000 === 0) emit('parse', 40 + (count % 20), `Analysiere Module... (${count} gescannt)`);
+
+            try {
+                const content = fs.readFileSync(file, 'utf8');
+                const relPath = path.relative(modulesDir, file); // e.g., exploits/windows/smb/ms17_010_eternalblue.rb
+
+                // Determine type
+                let type = 'remote';
+                if (relPath.startsWith('auxiliary')) type = 'auxiliary';
+                else if (relPath.startsWith('payloads')) type = 'payload';
+                else if (relPath.startsWith('exploits')) type = 'remote'; // Default, refine later if needed (local/webapps)
+                else if (relPath.startsWith('post')) type = 'local';
+
+                // Skip encoders/nops/evasion if not relevant, but user wanted "everything"
+                if (relPath.startsWith('encoders') || relPath.startsWith('nops')) continue;
+
+                // Simple Regex Parsing
+                const nameMatch = content.match(/'Name'\s*=>\s*['"](.+?)['"]/);
+                const descMatch = content.match(/'Description'\s*=>\s*%q\{(.+?)\}/s) || content.match(/'Description'\s*=>\s*['"](.+?)['"]/s);
+                const rankMatch = content.match(/'Rank'\s*=>\s*(\w+)/);
+                const platformMatch = content.match(/'Platform'\s*=>\s*\['(.+?)'\]/) || content.match(/'Platform'\s*=>\s*'(.+?)'/);
+                // CVE
+                const cveMatch = content.match(/'CVE',\s*'(\d{4}-\d+)'/);
+                // Port (often in DefaultOptions or RegisterOptions, hard to parse robustly, skip/null)
+
+                const title = nameMatch ? nameMatch[1] : path.basename(relPath, '.rb');
+                const desc = descMatch ? descMatch[1].trim() : title;
+                const platform = platformMatch ? normPlatform(platformMatch[1]) : 'Multi';
+                const cveId = cveMatch ? `CVE-${cveMatch[1]}` : null;
+                const rank = rankMatch ? rankMatch[1] : 'NormalRanking';
+
+                let severity = 'medium';
+                if (rank.includes('Excellent') || rank.includes('Great')) severity = 'critical';
+                else if (rank.includes('Good')) severity = 'high';
+                else if (rank.includes('Normal')) severity = 'medium';
+                else severity = 'low';
+
+                batch.push({
+                    id: relPath.replace(/\.rb$/, ''),
+                    cveId,
+                    title: title.substring(0, 500),
+                    desc: desc.substring(0, 5000),
+                    platform,
+                    type,
+                    severity,
+                    reliability: rank,
+                    url: `https://github.com/rapid7/metasploit-framework/blob/master/modules/${relPath}`,
+                    code: file
+                });
+
+                if (batch.length >= BATCH) {
+                    database.transaction((items) => {
+                        for (const i of items) {
+                            insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, null, i.reliability, i.url, i.code);
+                            added++;
+                        }
+                    })(batch);
+                    batch = [];
+                }
+            } catch (e) {
+                // Ignore parse errors
+            }
+        }
+
+        if (batch.length > 0) {
+            database.transaction((items) => {
+                for (const i of items) {
+                    insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, null, i.reliability, i.url, i.code);
+                    added++;
+                }
+            })(batch);
+        }
+
+        const countAfter = database.prepare("SELECT COUNT(*) as c FROM exploits WHERE source = 'metasploit'").get().c;
+        database.prepare(`UPDATE db_update_log SET entries_added = ?, entries_updated = 0, entries_after = ?, status = 'completed', completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(added, countAfter, logId);
+
+        emit('done', 100, `Fertig! ${added} Metasploit Module importiert.`, { before: countBefore, added, after: countAfter });
+
+    } catch (err) {
+        database.prepare(`UPDATE db_update_log SET status = 'error', error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?`).run(err.message, logId);
+        emit('error', 0, `Fehler: ${err.message}`);
+        process.exit(1);
+    }
+}
+
+// ============================================
 // HELPERS
 // ============================================
 function downloadToString(url) {
@@ -768,13 +1036,15 @@ function parseNmapServiceProbes(data) {
 const type = process.argv[2];
 const userId = parseInt(process.argv[3]) || 1;
 
-if (!type) { console.error('Usage: node syncWorker.js <cve|fingerprints|exploits> <userId>'); process.exit(1); }
+if (!type) { console.error('Usage: node syncWorker.js <cve|fingerprints|exploits|ghdb|metasploit> <userId>'); process.exit(1); }
 
 (async () => {
     try {
         if (type === 'cve') await syncCVE(userId);
         else if (type === 'fingerprints') await syncFingerprints(userId);
         else if (type === 'exploits') await syncExploits(userId);
+        else if (type === 'ghdb') await syncGHDB(userId);
+        else if (type === 'metasploit') await syncMetasploit(userId);
         else { console.error(`Unknown type: ${type}`); process.exit(1); }
     } catch (err) {
         emit('error', 0, `Worker-Fehler: ${err.message}`);
