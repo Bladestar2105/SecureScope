@@ -112,7 +112,7 @@
     }
 
     function handleScanError(data) {
-        showToast('error', 'Scan-Fehler', data.message || 'Ein Fehler ist aufgetreten.');
+        showToast('error', 'Scan-Fehler', esc(data.message || 'Ein Fehler ist aufgetreten.'));
         const panel = document.getElementById('scanProgressPanel');
         if (panel) panel.classList.add('hidden');
     }
@@ -142,7 +142,7 @@
     }
 
     function handleChainError(data) {
-        showToast('error', 'Attack Chain Fehler', data.error || 'Unknown error');
+        showToast('error', 'Attack Chain Fehler', esc(data.error || 'Unknown error'));
         if (currentChainExecId === data.executionId) {
             showChainExecDetail(data.executionId);
         }
@@ -282,8 +282,8 @@
         if (e && e.preventDefault) e.preventDefault();
         const target = document.getElementById('scanTarget').value.trim();
         const scanType = document.getElementById('scanType').value;
-        let portRange = null;
-        if (scanType === 'custom') portRange = document.getElementById('customPorts').value.trim();
+        let customPorts = null;
+        if (scanType === 'custom') customPorts = document.getElementById('customPorts').value.trim();
         if (!target) { showToast('error', 'Fehler', 'Bitte Ziel-IP eingeben'); return; }
 
         const btn = document.getElementById('startScanBtn');
@@ -292,9 +292,9 @@
         btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Wird gestartet...';
 
         try {
-            const d = await api('/api/scan/start', 'POST', { target, scanType, portRange });
-            currentScanId = d.scanId;
-            showToast('success', 'Scan gestartet', `Scan #${d.scanId} für ${target}`);
+            const d = await api('/api/scan/start', 'POST', { target, scanType, customPorts });
+            currentScanId = d.scan.id;
+            showToast('success', 'Scan gestartet', `Scan #${d.scan.id} für ${target}`);
             document.getElementById('scanProgressPanel').classList.remove('hidden');
             document.getElementById('scanResultsPanel').classList.add('hidden');
         } catch (e) {
@@ -306,13 +306,13 @@
 
     window.stopCurrentScan = async function () {
         if (!currentScanId) return;
-        try { await api(`/api/scan/${currentScanId}/stop`, 'POST'); showToast('info', 'Scan gestoppt', 'Der Scan wurde abgebrochen.'); document.getElementById('scanProgressPanel').classList.add('hidden'); } catch (e) { showToast('error', 'Fehler', e.message); }
+        try { await api(`/api/scan/stop/${currentScanId}`, 'POST'); showToast('info', 'Scan gestoppt', 'Der Scan wurde abgebrochen.'); document.getElementById('scanProgressPanel').classList.add('hidden'); } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
     window.stopActiveScan = async function () {
         try {
             const d = await api('/api/scan/dashboard');
-            if (d.activeScan) { await api(`/api/scan/${d.activeScan.id}/stop`, 'POST'); showToast('info', 'Scan gestoppt', 'Aktiver Scan wurde abgebrochen.'); loadDashboard(); }
+            if (d.activeScan) { await api(`/api/scan/stop/${d.activeScan.id}`, 'POST'); showToast('info', 'Scan gestoppt', 'Aktiver Scan wurde abgebrochen.'); loadDashboard(); }
         } catch (e) { showToast('error', 'Fehler', e.message); }
     };
 
@@ -672,7 +672,7 @@
             await api('/api/users', 'POST', {
                 username: document.getElementById('newUsername').value,
                 password: document.getElementById('newPassword').value,
-                role: document.getElementById('newUserRole').value
+                roles: [document.getElementById('newUserRole').value]
             });
             showToast('success', 'Erstellt', 'Benutzer wurde erstellt.');
             hideUserModal(); loadUsers();
@@ -688,19 +688,21 @@
     // ============================================
     async function loadNotifications() {
         try {
-            const d = await api('/api/notifications');
+            const d = await api('/api/notifications/settings');
+            const settings = d.settings || {};
             const tbody = document.getElementById('notificationsTableBody');
-            const notifs = d.notifications || d || [];
-            if (notifs.length > 0) {
-                tbody.innerHTML = notifs.map(n => `<tr>
-                    <td>${severityBadge(n.type || 'info')}</td><td>${esc(n.title)}</td>
-                    <td>${esc(n.message)}</td><td>${formatDate(n.created_at)}</td>
-                    <td><span class="badge badge-${n.read ? 'gray' : 'blue'}">${n.read ? 'Gelesen' : 'Neu'}</span></td>
-                </tr>`).join('');
-            } else {
-                tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Keine Benachrichtigungen</td></tr>';
-            }
-        } catch (e) {}
+            // Display notification settings status
+            tbody.innerHTML = `<tr>
+                <td><span class="badge badge-${settings.emailEnabled ? 'green' : 'gray'}">${settings.emailEnabled ? 'Aktiv' : 'Inaktiv'}</span></td>
+                <td>${esc(settings.emailAddress || 'Nicht konfiguriert')}</td>
+                <td>${esc(settings.smtpHost || '-')}</td>
+                <td>Scan: ${settings.notifyScanComplete ? '✓' : '✗'} | Kritisch: ${settings.notifyCriticalFound ? '✓' : '✗'} | Report: ${settings.notifyScheduledReport ? '✓' : '✗'}</td>
+                <td><span class="badge badge-blue">Einstellungen</span></td>
+            </tr>`;
+        } catch (e) {
+            const tbody = document.getElementById('notificationsTableBody');
+            if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted">Keine Benachrichtigungen konfiguriert</td></tr>';
+        }
     }
 
     // ============================================
@@ -712,10 +714,10 @@
         if (e && e.preventDefault) e.preventDefault();
         const current = document.getElementById('currentPassword').value;
         const newPw = document.getElementById('newPasswordField').value;
-        const confirm = document.getElementById('confirmPassword').value;
-        if (newPw !== confirm) { showToast('error', 'Fehler', 'Passwörter stimmen nicht überein'); return; }
+        const confirmPw = document.getElementById('confirmPassword').value;
+        if (newPw !== confirmPw) { showToast('error', 'Fehler', 'Passwörter stimmen nicht überein'); return; }
         try {
-            await api('/api/auth/change-password', 'POST', { currentPassword: current, newPassword: newPw });
+            await api('/api/auth/change-password', 'POST', { currentPassword: current, newPassword: newPw, confirmPassword: confirmPw });
             showToast('success', 'Erfolg', 'Passwort wurde geändert.');
             hidePasswordModal();
         } catch (e) { showToast('error', 'Fehler', e.message); }
@@ -727,7 +729,7 @@
     window.exportResults = async function (format) {
         if (!currentScanId) return;
         try {
-            const d = await api(`/api/scan/${currentScanId}/export?format=${format}`);
+            const d = await api(`/api/scan/export/${currentScanId}?format=${format}`);
             if (d.downloadUrl) window.open(d.downloadUrl, '_blank');
             else if (d.data) {
                 const blob = new Blob([typeof d.data === 'string' ? d.data : JSON.stringify(d.data, null, 2)], { type: format === 'json' ? 'application/json' : 'text/csv' });
