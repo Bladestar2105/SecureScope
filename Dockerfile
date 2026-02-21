@@ -37,6 +37,8 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ruby \
+    perl \
+    default-jdk \
     netcat-openbsd \
     socat \
     gcc \
