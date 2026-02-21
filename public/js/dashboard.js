@@ -200,6 +200,17 @@
     // ============================================
     function esc(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 
+    // Format scan type badge with stealth indicator
+    function scanTypeBadge(scanType) {
+        if (!scanType) return '<span class="badge badge-blue">-</span>';
+        const isStealth = scanType.endsWith('_stealth');
+        const baseType = isStealth ? scanType.replace('_stealth', '') : scanType;
+        if (isStealth) {
+            return `<span class="badge badge-purple" title="Stealth-Scan (SYN)"><i class="bi bi-incognito"></i> ${esc(baseType)}</span>`;
+        }
+        return `<span class="badge badge-blue">${esc(baseType)}</span>`;
+    }
+
     // Debounce helper
     let _debounceTimers = {};
     window.debounce = function(fn, delay) {
@@ -260,7 +271,7 @@
                 table.classList.remove('hidden');
                 empty.classList.add('hidden');
                 tbody.innerHTML = d.recentScans.map(s => `<tr>
-                    <td>#${s.id}</td><td>${esc(s.target)}</td><td><span class="badge badge-blue">${esc(s.scan_type)}</span></td>
+                    <td>#${s.id}</td><td>${esc(s.target)}</td><td>${scanTypeBadge(s.scan_type)}</td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
                     <td><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button></td>
@@ -282,8 +293,9 @@
         if (e && e.preventDefault) e.preventDefault();
         const target = document.getElementById('scanTarget').value.trim();
         const scanType = document.getElementById('scanType').value;
-        let portRange = null;
-        if (scanType === 'custom') portRange = document.getElementById('customPorts').value.trim();
+        const stealthMode = document.getElementById('stealthMode').checked;
+        let customPorts = null;
+        if (scanType === 'custom') customPorts = document.getElementById('customPorts').value.trim();
         if (!target) { showToast('error', 'Fehler', 'Bitte Ziel-IP eingeben'); return; }
 
         const btn = document.getElementById('startScanBtn');
@@ -292,9 +304,9 @@
         btn.disabled = true; spinner.classList.remove('hidden'); btnText.textContent = 'Wird gestartet...';
 
         try {
-            const d = await api('/api/scan/start', 'POST', { target, scanType, portRange });
-            currentScanId = d.scanId;
-            showToast('success', 'Scan gestartet', `Scan #${d.scanId} für ${target}`);
+            const d = await api('/api/scan/start', 'POST', { target, scanType, customPorts, stealthMode });
+            currentScanId = d.scan.id;
+            showToast('success', 'Scan gestartet', `Scan #${d.scan.id} für ${target}`);
             document.getElementById('scanProgressPanel').classList.remove('hidden');
             document.getElementById('scanResultsPanel').classList.add('hidden');
         } catch (e) {
@@ -422,7 +434,7 @@
             const s = d.scan;
             document.getElementById('detailId').textContent = '#' + s.id;
             document.getElementById('detailTarget').textContent = s.target;
-            document.getElementById('detailType').innerHTML = `<span class="badge badge-blue">${esc(s.scan_type)}</span>`;
+            document.getElementById('detailType').innerHTML = scanTypeBadge(s.scan_type);
             document.getElementById('detailStatus').innerHTML = statusBadge(s.status);
             document.getElementById('detailStarted').textContent = formatDate(s.started_at);
             document.getElementById('detailCompleted').textContent = formatDate(s.completed_at);
@@ -518,7 +530,7 @@
                 empty.classList.add('hidden');
                 tbody.parentElement.parentElement.classList.remove('hidden');
                 tbody.innerHTML = d.scans.map(s => `<tr>
-                    <td>#${s.id}</td><td>${esc(s.target)}</td><td><span class="badge badge-blue">${esc(s.scan_type)}</span></td>
+                    <td>#${s.id}</td><td>${esc(s.target)}</td><td>${scanTypeBadge(s.scan_type)}</td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
                     <td><div class="d-flex gap-1"><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button>
@@ -610,7 +622,7 @@
             const schedules = d.schedules || d || [];
             if (schedules.length > 0) {
                 tbody.innerHTML = schedules.map(s => `<tr>
-                    <td>${esc(s.name)}</td><td>${esc(s.target)}</td><td><span class="badge badge-blue">${esc(s.scan_type)}</span></td>
+                    <td>${esc(s.name)}</td><td>${esc(s.target)}</td><td>${scanTypeBadge(s.scan_type)}</td>
                     <td>${esc(s.cron_expression)}</td><td><span class="badge badge-${s.enabled ? 'green' : 'gray'}">${s.enabled ? 'Aktiv' : 'Inaktiv'}</span></td>
                     <td>${formatDate(s.next_run)}</td>
                     <td><div class="d-flex gap-1">

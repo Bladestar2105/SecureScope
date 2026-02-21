@@ -81,7 +81,7 @@ router.delete('/:id(\\d+)', (req, res) => {
 // POST /api/scan/start - Start a new scan
 router.post('/start', scanLimiter, async (req, res) => {
     try {
-        const { target, scanType, customPorts } = req.body;
+        const { target, scanType, customPorts, stealthMode } = req.body;
 
         if (!target || !scanType) {
             return res.status(400).json({ error: 'Ziel und Scan-Typ sind erforderlich' });
@@ -100,13 +100,15 @@ router.post('/start', scanLimiter, async (req, res) => {
             req.session.userId,
             target.trim(),
             scanType,
-            customPorts ? customPorts.trim() : null
+            customPorts ? customPorts.trim() : null,
+            !!stealthMode
         );
 
         UserService.logAudit(req.session.userId, 'SCAN_STARTED', {
             scanId: scan.id,
             target: target.trim(),
-            scanType
+            scanType,
+            stealthMode: !!stealthMode
         }, req.ip);
 
         res.json({ success: true, scan });
