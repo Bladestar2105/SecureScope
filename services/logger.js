@@ -4,9 +4,55 @@ const path = require('path');
 
 const logDir = path.join(__dirname, '..', 'logs');
 
+// Sensitive keys to mask in logs
+const SENSITIVE_KEYS = [
+    'password', 'passwd', 'token', 'secret', 'authorization',
+    'cookie', 'session', 'passphrase', 'apikey', 'credential'
+];
+
+// Winston internal keys that should not be masked
+const IGNORED_KEYS = ['level', 'message', 'timestamp', 'stack'];
+
+// Custom format to mask sensitive data in metadata
+const maskSensitiveData = winston.format((info) => {
+    const seen = new WeakMap();
+
+    const mask = (val, key) => {
+        // Mask sensitive keys (except internal winston keys)
+        if (key && typeof key === 'string' && !IGNORED_KEYS.includes(key)) {
+            const isSensitive = SENSITIVE_KEYS.some(sk =>
+                key.toLowerCase().includes(sk)
+            );
+            if (isSensitive) return '[MASKED]';
+        }
+
+        // Only recurse into objects and arrays
+        if (typeof val !== 'object' || val === null) return val;
+
+        // Handle circular references
+        if (seen.has(val)) return '[Circular]';
+        seen.set(val, true);
+
+        if (Array.isArray(val)) {
+            return val.map(item => mask(item));
+        }
+
+        const cloned = {};
+        for (const k in val) {
+            if (Object.prototype.hasOwnProperty.call(val, k)) {
+                cloned[k] = mask(val[k], k);
+            }
+        }
+        return cloned;
+    };
+
+    return mask(info);
+});
+
 const logFormat = winston.format.combine(
     winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
     winston.format.errors({ stack: true }),
+    maskSensitiveData(),
     winston.format.printf(({ timestamp, level, message, stack, ...meta }) => {
         let log = `${timestamp} [${level.toUpperCase()}]: ${message}`;
         if (stack) {
@@ -22,6 +68,7 @@ const logFormat = winston.format.combine(
 const consoleFormat = winston.format.combine(
     winston.format.colorize(),
     winston.format.timestamp({ format: 'HH:mm:ss' }),
+    maskSensitiveData(),
     winston.format.printf(({ timestamp, level, message }) => {
         return `${timestamp} ${level}: ${message}`;
     })
