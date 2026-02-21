@@ -5,13 +5,21 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const logger = require('../services/logger');
 
-const DB_PATH = process.env.DATABASE_PATH || path.join(__dirname, '..', 'database', 'securescope.db');
-
 let db;
+let currentDbPath = null;
+
+function getDbPath() {
+    return process.env.DATABASE_PATH || path.join(__dirname, '..', 'database', 'securescope.db');
+}
 
 function getDatabase() {
-    if (!db) {
-        db = new Database(DB_PATH);
+    const dbPath = getDbPath();
+    if (!db || currentDbPath !== dbPath) {
+        if (db) {
+            try { db.close(); } catch (e) { /* ignore */ }
+        }
+        db = new Database(dbPath);
+        currentDbPath = dbPath;
         db.pragma('journal_mode = WAL');
         db.pragma('foreign_keys = ON');
         db.pragma('busy_timeout = 30000'); // Wait up to 30s if DB is locked by worker
@@ -121,7 +129,7 @@ function initializeDatabase() {
             logger.info('PLEASE CHANGE THIS PASSWORD IMMEDIATELY AFTER LOGIN!');
             logger.info('================================================================');
         } else {
-            logger.info(`Default admin user created (username: ${adminUsername}, password: ${adminPassword})`);
+            logger.info(`Default admin user created (username: ${adminUsername}). Password change is enforced on first login.`);
         }
     }
 
@@ -133,6 +141,7 @@ function closeDatabase() {
     if (db) {
         db.close();
         db = null;
+        currentDbPath = null;
         logger.info('Database connection closed');
     }
 }
