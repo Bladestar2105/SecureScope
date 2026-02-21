@@ -35,12 +35,14 @@ RUN apt-get update && apt-get install -y \
     unzip \
     git \
     python3 \
+    python3-pip \
     ruby \
     netcat-openbsd \
     socat \
     gcc \
     make \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko
 
 # Copy production dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
