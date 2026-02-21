@@ -7,6 +7,7 @@ const { scanLimiter } = require('../middleware/rateLimit');
 const UserService = require('../services/userService');
 const logger = require('../services/logger');
 const PDFDocument = require('pdfkit');
+const { Parser } = require('json2csv');
 
 // All scan routes require authentication
 router.use(requireAuth);
@@ -434,19 +435,46 @@ function exportJSON(res, scan, results) {
 }
 
 function exportCSV(res, scan, results) {
-    const header = 'IP-Adresse,Port,Protokoll,Service,Produkt,Version,Banner,CPE,OS,Status,Risiko';
-    const esc = (s) => {
-        if (!s) return '';
-        let str = String(s);
+    const fields = [
+        { label: 'IP-Adresse', value: 'ip_address' },
+        { label: 'Port', value: 'port' },
+        { label: 'Protokoll', value: 'protocol' },
+        { label: 'Service', value: 'service' },
+        { label: 'Produkt', value: 'service_product' },
+        { label: 'Version', value: 'service_version' },
+        { label: 'Banner', value: 'banner' },
+        { label: 'CPE', value: 'service_cpe' },
+        { label: 'OS', value: 'os_name' },
+        { label: 'Status', value: 'state' },
+        { label: 'Risiko', value: 'risk_level' }
+    ];
+
+    const sanitize = (val) => {
+        if (val === null || val === undefined) return '';
+        const str = String(val);
         // Prevent formula injection (CSV Injection)
         if (/^[=@+\-]/.test(str)) {
-            str = "'" + str;
+            return "'" + str;
         }
-        return `"${str.replace(/"/g, '""')}"`;
+        return str;
     };
-    const rows = results.map(r =>
-        `${r.ip_address},${r.port},${r.protocol},${esc(r.service)},${esc(r.service_product)},${esc(r.service_version)},${esc(r.banner)},${esc(r.service_cpe)},${esc(r.os_name)},${r.state},${r.risk_level}`
-    );
+
+    const sanitizedResults = results.map(r => ({
+        ip_address: sanitize(r.ip_address),
+        port: r.port,
+        protocol: sanitize(r.protocol),
+        service: sanitize(r.service),
+        service_product: sanitize(r.service_product),
+        service_version: sanitize(r.service_version),
+        banner: sanitize(r.banner),
+        service_cpe: sanitize(r.service_cpe),
+        os_name: sanitize(r.os_name),
+        state: sanitize(r.state),
+        risk_level: sanitize(r.risk_level)
+    }));
+
+    const json2csvParser = new Parser({ fields });
+    const csvData = json2csvParser.parse(sanitizedResults);
 
     const csv = [
         `# SecureScope Scan Report - ID: ${scan.id}`,
@@ -455,8 +483,7 @@ function exportCSV(res, scan, results) {
         `# Datum: ${scan.started_at}`,
         `# Status: ${scan.status}`,
         '',
-        header,
-        ...rows
+        csvData
     ].join('\n');
 
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
