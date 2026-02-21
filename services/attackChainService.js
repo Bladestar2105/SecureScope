@@ -518,8 +518,35 @@ class AttackChainService extends EventEmitter {
                             continue;
                         }
 
+                        // Skip non-executable formats
+                        if (['text', 'txt'].includes(exploitData.language)) {
+                            findings.push({
+                                type: 'info',
+                                category: 'Exploit übersprungen',
+                                title: `Exploit nicht ausführbar: ${exploit.title}`,
+                                details: 'Exploit-Format ist nur Text/Information.',
+                                severity: 'info'
+                            });
+                            continue;
+                        }
+
                         // Substitute placeholders
                         let code = exploitData.code;
+
+                        // Auto-convert Python 2 to 3
+                        if (exploitData.language === 'python') {
+                            // Convert print statements: print "..." -> print("...")
+                            code = code.replace(/^\s*print\b(?!\s*\()(.*)$/gm, (match, p1) => {
+                                const indent = match.match(/^\s*/)[0];
+                                return `${indent}print(${p1.trim()})`;
+                            });
+
+                            // Convert exception handling: except Exception, e: -> except Exception as e:
+                            code = code.replace(/except\s+([a-zA-Z0-9_.]+)\s*,\s*([a-zA-Z0-9_]+)\s*:/g, 'except $1 as $2:');
+
+                            // Convert raw_input -> input
+                            code = code.replace(/raw_input\(/g, 'input(');
+                        }
                         const lhost = params.LHOST || '127.0.0.1';
                         const lport = params.LPORT ? parseInt(params.LPORT) : null;
 
