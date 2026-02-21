@@ -454,7 +454,7 @@
                                 <select id="exploitFilterType" class="form-control" onchange="loadExploits()"><option value="">Alle</option><option value="remote">Remote</option><option value="local">Local</option><option value="auxiliary">Auxiliary</option><option value="payload">Payload</option></select></div>
                             <div class="form-group"><label>Suche</label><input type="text" id="exploitFilterSearch" class="form-control" placeholder="CVE, Titel, Service..." oninput="debounce(loadExploits,500)()"></div>
                         </div>
-                        <div class="table-container"><table class="data-table"><thead><tr><th>CVE / EDB</th><th>Titel</th><th>Service</th><th>Port</th><th>Plattform</th><th>Typ</th><th>Severity</th><th>CVSS</th><th>Zuverlässigkeit</th><th>Quelle</th></tr></thead>
+                        <div class="table-container"><table class="data-table"><thead><tr><th>CVE / EDB</th><th>Titel</th><th>Service</th><th>Port</th><th>Plattform</th><th>Typ</th><th>Severity</th><th>CVSS</th><th>Zuverlässigkeit</th><th>Quelle</th><th>Aktionen</th></tr></thead>
                         <tbody id="exploitTableBody"></tbody></table></div>
                         <div class="loading-overlay hidden" id="exploitLoading"><div class="spinner spinner-lg spinner-blue"></div><span>Lade Exploits...</span></div>
                         <div class="empty-state hidden" id="exploitEmpty"><i class="bi bi-database-exclamation"></i><h4>Keine Exploits gefunden</h4></div>

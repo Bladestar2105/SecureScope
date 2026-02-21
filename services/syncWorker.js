@@ -669,12 +669,10 @@ async function syncGHDB(userId) {
             source TEXT DEFAULT 'ghdb',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
+        );
+        CREATE INDEX IF NOT EXISTS idx_ghdb_category ON ghdb_entries(category);
+        CREATE INDEX IF NOT EXISTS idx_ghdb_query ON ghdb_entries(query);
     `);
-    try {
-        database.exec('CREATE INDEX IF NOT EXISTS idx_ghdb_category ON ghdb_entries(category)');
-        database.exec('CREATE INDEX IF NOT EXISTS idx_ghdb_query ON ghdb_entries(query)');
-    } catch {}
 
     const countBefore = database.prepare('SELECT COUNT(*) as c FROM ghdb_entries').get().c;
     const logEntry = database.prepare(`
@@ -882,7 +880,9 @@ async function syncMetasploit(userId) {
                 if (batch.length >= BATCH) {
                     database.transaction((items) => {
                         for (const i of items) {
-                            insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, null, i.reliability, i.url, i.code);
+                            // Fix param count: 12 params expected
+                            // 1:id, 2:cve, 3:title, 4:desc, 5:plat, 6:type, 7:svc(null), 8:port(null), 9:sev, 10:rel, 11:url, 12:code
+                            insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, i.reliability, i.url, i.code);
                             added++;
                         }
                     })(batch);
@@ -896,7 +896,7 @@ async function syncMetasploit(userId) {
         if (batch.length > 0) {
             database.transaction((items) => {
                 for (const i of items) {
-                    insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, null, i.reliability, i.url, i.code);
+                    insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, null, null, i.severity, i.reliability, i.url, i.code);
                     added++;
                 }
             })(batch);
