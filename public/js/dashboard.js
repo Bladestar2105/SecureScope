@@ -2617,5 +2617,117 @@
         }
     };
 
+    // ============================================
+    // ========== LIVE LOG MODULE ==========
+    // ============================================
+    let logEventSource = null;
+
+    window.showLogModal = function() {
+        const modal = document.getElementById('logModal');
+        if (modal) {
+            modal.classList.add('active');
+            connectLogStream();
+        }
+    };
+
+    window.hideLogModal = function() {
+        const modal = document.getElementById('logModal');
+        if (modal) {
+            modal.classList.remove('active');
+        }
+        if (logEventSource) {
+            logEventSource.close();
+            logEventSource = null;
+        }
+        const status = document.getElementById('logStatus');
+        if (status) {
+            status.textContent = 'Getrennt';
+            status.style.color = '#aaa';
+        }
+    };
+
+    window.clearLogs = function() {
+        const container = document.getElementById('logContainer');
+        if (container) container.innerHTML = '';
+    };
+
+    function connectLogStream() {
+        if (logEventSource) logEventSource.close();
+
+        const status = document.getElementById('logStatus');
+        if (status) {
+            status.textContent = 'Verbinde...';
+            status.style.color = 'yellow';
+        }
+
+        logEventSource = new EventSource('/api/system/logs/stream');
+
+        logEventSource.onopen = () => {
+            if (status) {
+                status.textContent = 'Verbunden';
+                status.style.color = '#4ade80'; // green
+            }
+        };
+
+        logEventSource.onmessage = (e) => {
+            try {
+                if (e.data === 'connected' || !e.data) return;
+                const entry = JSON.parse(e.data);
+                appendLogEntry(entry);
+            } catch (err) {}
+        };
+
+        logEventSource.onerror = () => {
+            if (status) {
+                status.textContent = 'Verbindung unterbrochen';
+                status.style.color = '#ef4444'; // red
+            }
+            logEventSource.close();
+            // Auto reconnect after 5s if modal is still open
+            const modal = document.getElementById('logModal');
+            if (modal && modal.classList.contains('active')) {
+                setTimeout(connectLogStream, 5000);
+            }
+        };
+    }
+
+    function appendLogEntry(entry) {
+        const container = document.getElementById('logContainer');
+        if (!container) return;
+
+        const div = document.createElement('div');
+        div.style.marginBottom = '4px';
+        div.style.fontFamily = 'monospace';
+
+        const ts = new Date(entry.timestamp).toLocaleTimeString();
+
+        let color = '#d4d4d4'; // default
+        if (entry.level === 'error') color = '#ef4444';
+        else if (entry.level === 'warn') color = '#f59e0b';
+        else if (entry.level === 'debug') color = '#a3a3a3';
+        else if (entry.level === 'info') color = '#60a5fa';
+
+        const levelSpan = `<span style="color:${color};font-weight:bold;min-width:60px;display:inline-block">[${entry.level.toUpperCase()}]</span>`;
+        const timeSpan = `<span style="color:#666;margin-right:8px">${ts}</span>`;
+
+        let message = esc(entry.message || '');
+        if (entry.meta && Object.keys(entry.meta).length > 0) {
+            message += ` <span style="color:#888">${esc(JSON.stringify(entry.meta))}</span>`;
+        }
+
+        div.innerHTML = `${timeSpan}${levelSpan} ${message}`;
+        container.appendChild(div);
+
+        // Limit lines
+        if (container.children.length > 500) {
+            container.removeChild(container.firstChild);
+        }
+
+        const autoScroll = document.getElementById('logAutoScroll');
+        if (autoScroll && autoScroll.checked) {
+            container.scrollTop = container.scrollHeight;
+        }
+    }
+
     init();
 })();

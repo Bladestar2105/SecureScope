@@ -155,14 +155,14 @@ router.get('/stats', requireAuth, async (req, res) => {
             exploits: {
                 total: db.prepare('SELECT COUNT(*) as c FROM exploits').get().c,
                 bySource: db.prepare('SELECT source, COUNT(*) as count FROM exploits GROUP BY source').all(),
-                bySeverity: db.prepare('SELECT severity, COUNT(*) as count FROM exploits GROUP BY severity').all(),
+                bySeverity: db.prepare('SELECT LOWER(severity) as severity, COUNT(*) as count FROM exploits GROUP BY LOWER(severity)').all(),
                 lastUpdate: db.prepare("SELECT MAX(updated_at) as last FROM exploits").get().last,
                 lastSync: db.prepare("SELECT completed_at FROM db_update_log WHERE database_type = 'exploits' AND status = 'completed' ORDER BY completed_at DESC LIMIT 1").get()?.completed_at,
                 repoStats: await ExploitDbSyncService.getRepoStats()
             },
             cve: {
                 total: db.prepare('SELECT COUNT(*) as c FROM cve_entries').get().c,
-                bySeverity: db.prepare('SELECT severity, COUNT(*) as count FROM cve_entries WHERE severity IS NOT NULL GROUP BY severity').all(),
+                bySeverity: db.prepare('SELECT LOWER(severity) as severity, COUNT(*) as count FROM cve_entries WHERE severity IS NOT NULL GROUP BY LOWER(severity)').all(),
                 lastSync: db.prepare("SELECT completed_at FROM db_update_log WHERE database_type = 'cve' AND status = 'completed' ORDER BY completed_at DESC LIMIT 1").get()?.completed_at
             },
             vulnerabilities: {
