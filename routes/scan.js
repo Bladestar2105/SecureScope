@@ -324,7 +324,7 @@ router.get('/export/:id', (req, res) => {
 });
 
 // SSE endpoint for real-time scan updates
-router.get('/events', (req, res) => {
+router.get('/events', requireAuth, (req, res) => {
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',

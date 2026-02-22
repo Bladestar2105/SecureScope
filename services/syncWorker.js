@@ -72,7 +72,11 @@ function execSafe(cmd, options = {}) {
     } catch (err) {
         const stdout = err.stdout ? err.stdout.toString() : '';
         const stderr = err.stderr ? err.stderr.toString() : '';
-        throw new Error(`Command failed: ${cmd}\nSTDOUT: ${stdout}\nSTDERR: ${stderr}\nError: ${err.message}`);
+        // Prioritize stderr for error messages (it contains actual errors)
+        // Limit output to prevent huge error messages
+        const errorMsg = stderr || stdout;
+        const truncatedError = errorMsg.length > 1000 ? errorMsg.substring(errorMsg.length - 1000) : errorMsg;
+        throw new Error(`Command failed: ${cmd}\nSTDERR/STDOUT: ${truncatedError}\nError: ${err.message}`);
     }
 }
 
