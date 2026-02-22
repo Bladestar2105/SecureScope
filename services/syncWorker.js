@@ -816,6 +816,15 @@ async function syncMetasploit(userId) {
             // Clone only modules folder if possible? No, partial clone is complex. Shallow clone of full repo.
             execSafe(`git clone --depth 1 "https://github.com/rapid7/metasploit-framework.git" "${MSF_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
         }
+
+        // Run bundle install to ensure dependencies for execution
+        emit('download', 35, 'Installiere Metasploit Abhängigkeiten (bundle install)...');
+        try {
+            execSafe('bundle install', { cwd: MSF_DIR, maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+        } catch (e) {
+            emit('download', 38, `Warnung: Bundle install fehlgeschlagen: ${e.message}. Ausführung könnte beeinträchtigt sein.`);
+        }
+
         emit('download', 40, 'Repository bereit. Suche Module...');
 
         const modulesDir = path.join(MSF_DIR, 'modules');

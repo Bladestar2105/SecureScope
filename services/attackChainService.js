@@ -731,10 +731,10 @@ if klass
   end
 
   # Set Datastore
-  instance.datastore['RHOSTS'] = '${targetIp}'
-  instance.datastore['RPORT'] = '${targetPort || 80}'
-  ${lhost ? `instance.datastore['LHOST'] = '${lhost}'` : ''}
-  ${lport ? `instance.datastore['LPORT'] = '${lport}'` : ''}
+  instance.datastore['RHOSTS'] = '${targetIp.replace(/'/g, "\\'")}'
+  instance.datastore['RPORT'] = '${(targetPort || 80).toString().replace(/'/g, "\\'")}'
+  ${lhost ? `instance.datastore['LHOST'] = '${lhost.replace(/'/g, "\\'")}'` : ''}
+  ${lport ? `instance.datastore['LPORT'] = '${lport.toString().replace(/'/g, "\\'")}'` : ''}
   instance.datastore['ForceExploit'] = true
 
   puts "Running #{instance.name}..."
