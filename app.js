@@ -26,6 +26,7 @@ const auditRoutes = require('./routes/audits');
 const credentialRoutes = require('./routes/credentials');
 const dbUpdateRoutes = require('./routes/dbUpdate');
 const ghdbRoutes = require('./routes/ghdb');
+const systemRoutes = require('./routes/system');
 
 const app = express();
 
@@ -107,6 +108,7 @@ app.use('/api/audits', auditRoutes);
 app.use('/api/credentials', credentialRoutes);
 app.use('/api/db-update', dbUpdateRoutes);
 app.use('/api/ghdb', ghdbRoutes);
+app.use('/api/system', systemRoutes);
 
 // Serve login page as default
 app.get('/', (req, res) => {

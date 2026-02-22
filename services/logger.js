@@ -1,6 +1,8 @@
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
+const Transport = winston.transport;
+const logStreamService = require('./logStreamService');
 
 const logDir = path.join(__dirname, '..', 'logs');
 
@@ -102,21 +104,38 @@ const auditRotateTransport = new DailyRotateFile({
     format: logFormat
 });
 
+// Custom Transport for Web UI Streaming
+class WebStreamTransport extends Transport {
+    constructor(opts) {
+        super(opts);
+    }
+
+    log(info, callback) {
+        setImmediate(() => {
+            this.emit('logged', info);
+        });
+
+        // Broadcast to SSE clients via service
+        logStreamService.broadcast(info);
+
+        callback();
+    }
+}
+
 const logger = winston.createLogger({
     level: process.env.LOG_LEVEL || 'info',
     format: logFormat,
     transports: [
         dailyRotateTransport,
-        errorRotateTransport
+        errorRotateTransport,
+        new WebStreamTransport()
     ]
 });
 
-// Add console transport in development
-if (process.env.NODE_ENV !== 'production') {
-    logger.add(new winston.transports.Console({
-        format: consoleFormat
-    }));
-}
+// Always add console transport (needed for Docker logs)
+logger.add(new winston.transports.Console({
+    format: consoleFormat
+}));
 
 // Create a separate audit logger
 const auditLogger = winston.createLogger({
@@ -127,11 +146,10 @@ const auditLogger = winston.createLogger({
     ]
 });
 
-if (process.env.NODE_ENV !== 'production') {
-    auditLogger.add(new winston.transports.Console({
-        format: consoleFormat
-    }));
-}
+// Always log audits to console
+auditLogger.add(new winston.transports.Console({
+    format: consoleFormat
+}));
 
 // Audit log helper
 logger.audit = (action, details = {}) => {
