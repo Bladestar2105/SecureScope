@@ -778,7 +778,7 @@
 
     <!-- ========== Fingerprint Modal ========== -->
     <div class="modal-overlay" id="fingerprintModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideFingerprintModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideFingerprintModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="fpForm">
                 <div class="form-group"><label>Port *</label><input type="number" id="fpFormPort" class="form-control" placeholder="z.B. 22" required min="1" max="65535"></div>
                 <div class="form-group"><label>Service-Name *</label><input type="text" id="fpFormService" class="form-control" placeholder="z.B. OpenSSH" required></div>
@@ -795,7 +795,7 @@
 
     <!-- ========== Exploit Modal ========== -->
     <div class="modal-overlay" id="exploitModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideExploitModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit hinzufügen</h3><button class="btn-icon btn-outline" onclick="hideExploitModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="exploitForm">
                 <div class="form-group"><label>Titel *</label><input type="text" id="exploitFormTitle" class="form-control" placeholder="Exploit-Titel" required></div>
                 <div class="form-group"><label>CVE-ID</label><input type="text" id="exploitFormCVE" class="form-control" placeholder="z.B. CVE-2024-1234"></div>
@@ -816,7 +816,7 @@
 
     <!-- ========== Attack Chain Modal ========== -->
     <div class="modal-overlay" id="chainModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Neue Angriffskette</h3><button class="btn-icon btn-outline" onclick="hideChainModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Neue Angriffskette</h3><button class="btn-icon btn-outline" onclick="hideChainModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="chainForm">
                 <div class="form-group"><label>Name *</label><input type="text" id="chainFormName" class="form-control" placeholder="z.B. Custom SSH Audit" required></div>
                 <div class="form-group"><label>Beschreibung</label><textarea id="chainFormDesc" class="form-control" rows="2" placeholder="Beschreibung der Kette"></textarea></div>
@@ -837,7 +837,7 @@
 
     <!-- ========== Credential Modal ========== -->
     <div class="modal-overlay" id="credentialModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-shield-lock mr-1"></i> <span id="credModalTitle">Neue Zugangsdaten</span></h3><button class="btn-icon btn-outline" onclick="hideCredentialModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-shield-lock mr-1"></i> <span id="credModalTitle">Neue Zugangsdaten</span></h3><button class="btn-icon btn-outline" onclick="hideCredentialModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="credForm">
                 <input type="hidden" id="credEditId">
                 <div class="form-group"><label>Name *</label><input type="text" id="credName" class="form-control" placeholder="z.B. Prod-Server SSH" required></div>
@@ -861,7 +861,7 @@
 
     <!-- ========== Password Modal ========== -->
     <div class="modal-overlay" id="passwordModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-key mr-1"></i> Passwort ändern</h3><button class="btn-icon btn-outline" onclick="hidePasswordModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-key mr-1"></i> Passwort ändern</h3><button class="btn-icon btn-outline" onclick="hidePasswordModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="dashboardPwForm" onsubmit="changePassword(event)">
                 <div class="form-group"><label>Aktuelles Passwort</label><input type="password" id="modalCurrentPw" class="form-control" required></div>
                 <div class="form-group"><label>Neues Passwort</label><input type="password" id="modalNewPw" class="form-control" required></div>
@@ -873,7 +873,7 @@
 
     <!-- ========== Schedule Modal ========== -->
     <div class="modal-overlay" id="scheduleModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-calendar-plus mr-1"></i> <span id="scheduleModalTitle">Neuer geplanter Scan</span></h3><button class="btn-icon btn-outline" onclick="hideScheduleModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-calendar-plus mr-1"></i> <span id="scheduleModalTitle">Neuer geplanter Scan</span></h3><button class="btn-icon btn-outline" onclick="hideScheduleModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="scheduleForm">
                 <input type="hidden" id="scheduleEditId">
                 <div class="form-group"><label>Name</label><input type="text" id="scheduleName" class="form-control" placeholder="z.B. Nightly Server Scan" required></div>
@@ -892,7 +892,7 @@
 
     <!-- ========== User Modal ========== -->
     <div class="modal-overlay" id="userModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-person-plus mr-1"></i> <span id="userModalTitle">Neuer Benutzer</span></h3><button class="btn-icon btn-outline" onclick="hideUserModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-person-plus mr-1"></i> <span id="userModalTitle">Neuer Benutzer</span></h3><button class="btn-icon btn-outline" onclick="hideUserModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body"><form id="userForm">
                 <input type="hidden" id="userEditId">
                 <div class="form-group"><label>Benutzername</label><input type="text" id="userFormName" class="form-control" placeholder="benutzername" required></div>
@@ -906,35 +906,35 @@
 
     <!-- ========== Fingerprint Detail Modal ========== -->
     <div class="modal-overlay" id="fpDetailModal">
-        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint-Details</h3><button class="btn-icon btn-outline" onclick="hideFpDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-fingerprint mr-1"></i> Fingerprint-Details</h3><button class="btn-icon btn-outline" onclick="hideFpDetailModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body" id="fpDetailContent"></div>
         </div>
     </div>
 
     <!-- ========== Exploit Detail Modal ========== -->
     <div class="modal-overlay" id="exploitDetailModal">
-        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit-Details</h3><button class="btn-icon btn-outline" onclick="hideExDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-database-exclamation mr-1"></i> Exploit-Details</h3><button class="btn-icon btn-outline" onclick="hideExDetailModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body" id="exploitDetailContent"></div>
         </div>
     </div>
 
     <!-- ========== Audit Detail Modal ========== -->
     <div class="modal-overlay" id="auditDetailModal">
-        <div class="modal modal-xl"><div class="modal-header"><h3><i class="bi bi-clipboard-check mr-1"></i> Audit-Details</h3><button class="btn-icon btn-outline" onclick="hideAuditDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-xl"><div class="modal-header"><h3><i class="bi bi-clipboard-check mr-1"></i> Audit-Details</h3><button class="btn-icon btn-outline" onclick="hideAuditDetailModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body" id="auditDetailContent"></div>
         </div>
     </div>
 
     <!-- ========== Chain Execution Detail Modal ========== -->
     <div class="modal-overlay" id="chainExecDetailModal">
-        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Ausführungs-Details</h3><button class="btn-icon btn-outline" onclick="hideChainExecDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Ausführungs-Details</h3><button class="btn-icon btn-outline" onclick="hideChainExecDetailModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body" id="chainExecDetailContent"></div>
         </div>
     </div>
 
     <!-- ========== Exploit Code Viewer Modal ========== -->
     <div class="modal-overlay" id="exploitCodeModal">
-        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-code-slash mr-1"></i> Exploit-Code</h3><button class="btn-icon btn-outline" onclick="hideExploitCodeModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-code-slash mr-1"></i> Exploit-Code</h3><button class="btn-icon btn-outline" onclick="hideExploitCodeModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body">
                 <div id="exploitCodeMeta" style="margin-bottom:1rem;padding:.75rem;background:var(--bg-tertiary);border-radius:var(--radius-sm);font-size:.85rem">
                     <div id="exploitCodeFileName" style="font-weight:600;margin-bottom:.25rem"></div>
@@ -954,7 +954,7 @@
 
     <!-- ========== CVE Detail Modal ========== -->
     <div class="modal-overlay" id="cveDetailModal">
-        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-list-check mr-1"></i> CVE-Details</h3><button class="btn-icon btn-outline" onclick="hideCVEDetailModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal modal-lg"><div class="modal-header"><h3><i class="bi bi-list-check mr-1"></i> CVE-Details</h3><button class="btn-icon btn-outline" onclick="hideCVEDetailModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body" id="cveDetailContent"></div>
         </div>
     </div>
@@ -966,7 +966,7 @@
                 <h3><i class="bi bi-terminal-fill mr-1"></i> Remote Shell</h3>
                 <div class="d-flex gap-1">
                     <span id="shellStatus" class="badge badge-gray">Getrennt</span>
-                    <button class="btn-icon btn-outline" onclick="hideShellModal()"><i class="bi bi-x-lg"></i></button>
+                    <button class="btn-icon btn-outline" onclick="hideShellModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button>
                 </div>
             </div>
             <div class="modal-body" style="flex: 1; padding: 0; background: #000; overflow: hidden; position: relative;">
@@ -980,7 +980,7 @@
         <div class="modal modal-lg">
             <div class="modal-header" style="background:linear-gradient(135deg, rgba(239,68,68,0.1), rgba(239,68,68,0.05))">
                 <h3><i class="bi bi-lightning-charge-fill mr-1" style="color:var(--accent-red)"></i> Automatischer Angriff</h3>
-                <button class="btn-icon btn-outline" onclick="hideAutoAttackModal()"><i class="bi bi-x-lg"></i></button>
+                <button class="btn-icon btn-outline" onclick="hideAutoAttackModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button>
             </div>
             <div class="modal-body">
                 <div id="autoAttackContent">
@@ -1004,7 +1004,7 @@
 
     <!-- ========== Chain Target Modal (Service Selection) ========== -->
     <div class="modal-overlay" id="chainTargetModal">
-        <div class="modal"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Chain für Ziel erstellen</h3><button class="btn-icon btn-outline" onclick="hideChainTargetModal()"><i class="bi bi-x-lg"></i></button></div>
+        <div class="modal"><div class="modal-header"><h3><i class="bi bi-diagram-3 mr-1"></i> Chain für Ziel erstellen</h3><button class="btn-icon btn-outline" onclick="hideChainTargetModal()" aria-label="Schließen"><i class="bi bi-x-lg"></i></button></div>
             <div class="modal-body">
                 <input type="hidden" id="chainTargetScanId">
                 <div class="form-group"><label>Ziel</label><input type="text" id="chainTargetIP" class="form-control" readonly></div>
