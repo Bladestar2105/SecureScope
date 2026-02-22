@@ -883,7 +883,14 @@ async function syncMetasploit(userId) {
                 const platformMatch = content.match(/'Platform'\s*=>\s*\['(.+?)'\]/) || content.match(/'Platform'\s*=>\s*'(.+?)'/);
                 // CVE
                 const cveMatch = content.match(/'CVE',\s*'(\d{4}-\d+)'/);
-                // Port (often in DefaultOptions or RegisterOptions, hard to parse robustly, skip/null)
+                // Port (often in DefaultOptions or RegisterOptions)
+                let port = null;
+                const rportMatch = content.match(/'RPORT'\s*=>\s*(\d+)/) ||
+                                   content.match(/Opt::RPORT\((\d+)\)/) ||
+                                   content.match(/register_options\(\s*\[\s*Opt::RPORT\((\d+)\)/s);
+                if (rportMatch) {
+                    port = parseInt(rportMatch[1], 10);
+                }
 
                 const title = nameMatch ? nameMatch[1] : path.basename(relPath, '.rb');
                 const desc = descMatch ? descMatch[1].trim() : title;
@@ -907,6 +914,7 @@ async function syncMetasploit(userId) {
                     severity,
                     reliability: rank,
                     service: extractService(title),
+                    port: port,
                     url: `https://github.com/rapid7/metasploit-framework/blob/master/modules/${relPath}`,
                     code: file
                 });
@@ -914,7 +922,7 @@ async function syncMetasploit(userId) {
                 if (batch.length >= BATCH) {
                     database.transaction((items) => {
                         for (const i of items) {
-                            insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, i.service, null, i.severity, i.reliability, i.url, i.code);
+                            insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, i.service, i.port, i.severity, i.reliability, i.url, i.code);
                             added++;
                         }
                     })(batch);
@@ -928,7 +936,7 @@ async function syncMetasploit(userId) {
         if (batch.length > 0) {
             database.transaction((items) => {
                 for (const i of items) {
-                    insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, i.service, null, i.severity, i.reliability, i.url, i.code);
+                    insertStmt.run(i.id, i.cveId, i.title, i.desc, i.platform, i.type, i.service, i.port, i.severity, i.reliability, i.url, i.code);
                     added++;
                 }
             })(batch);
@@ -991,7 +999,36 @@ function normPlatform(p) {
 
 function extractService(title) {
     const t = title.toLowerCase();
-    const map = { 'openssh': 'OpenSSH', 'apache': 'Apache httpd', 'nginx': 'nginx', 'mysql': 'MySQL', 'postgresql': 'PostgreSQL', 'mongodb': 'MongoDB', 'redis': 'Redis', 'ftp': 'FTP', 'samba': 'Samba', 'wordpress': 'WordPress', 'jenkins': 'Jenkins', 'docker': 'Docker', 'tomcat': 'Apache Tomcat', 'iis': 'IIS' };
+    const map = {
+        'openssh': 'OpenSSH',
+        'apache': 'Apache httpd',
+        'nginx': 'nginx',
+        'mysql': 'MySQL',
+        'postgresql': 'PostgreSQL',
+        'mongodb': 'MongoDB',
+        'redis': 'Redis',
+        'ftp': 'FTP',
+        'samba': 'Samba',
+        'wordpress': 'WordPress',
+        'jenkins': 'Jenkins',
+        'docker': 'Docker',
+        'tomcat': 'Apache Tomcat',
+        'iis': 'IIS',
+        'smb': 'smb',
+        'microsoft-ds': 'smb',
+        'netbios': 'smb',
+        'microsoft server service': 'smb',
+        'netapi': 'smb',
+        'rpc': 'msrpc',
+        'dcerpc': 'msrpc',
+        'rdp': 'rdp',
+        'terminal services': 'rdp',
+        'ssh': 'ssh',
+        'telnet': 'telnet',
+        'smtp': 'smtp',
+        'pop3': 'pop3',
+        'imap': 'imap'
+    };
     for (const [k, v] of Object.entries(map)) { if (t.includes(k)) return v; }
     return null;
 }
