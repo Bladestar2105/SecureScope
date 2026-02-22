@@ -45,7 +45,8 @@ class LogStreamService extends EventEmitter {
         }
 
         // Send to all connected clients
-        const data = `data: ${JSON.stringify(logEntry)}\n\n`;
+        // IMPORTANT: SSE requires real newlines (\n), not escaped literals
+        const data = "data: " + JSON.stringify(logEntry) + "\n\n";
         for (const client of this.clients) {
             try {
                 client.write(data);
@@ -57,7 +58,8 @@ class LogStreamService extends EventEmitter {
 
     sendToClient(client, logEntry) {
         try {
-            client.write(`data: ${JSON.stringify(logEntry)}\n\n`);
+            // IMPORTANT: SSE requires real newlines (\n), not escaped literals
+            client.write("data: " + JSON.stringify(logEntry) + "\n\n");
         } catch (e) {
             this.removeClient(client);
         }
