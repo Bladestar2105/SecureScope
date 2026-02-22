@@ -39,6 +39,21 @@ class CVEService {
             FROM scan_results WHERE scan_id = ? AND state = 'open'
         `).all(scanId);
 
+        // Optimization: Prepare statements once outside the loop
+        const cpeMatchStmt = db.prepare(`
+            SELECT cve_id, title, severity, cvss_score
+            FROM cve_entries
+            WHERE affected_products LIKE ? AND state = 'PUBLISHED'
+            ORDER BY cvss_score DESC LIMIT 30
+        `);
+
+        const productMatchStmt = db.prepare(`
+            SELECT cve_id, title, severity, cvss_score
+            FROM cve_entries
+            WHERE (affected_products LIKE ? OR title LIKE ?) AND state = 'PUBLISHED'
+            ORDER BY cvss_score DESC LIMIT 20
+        `);
+
         const insertItems = [];
         const seenCVEs = new Set(); // Avoid duplicates per scan_result
 
@@ -61,12 +76,7 @@ class CVEService {
                     if (!searchTerm || searchTerm.length < 3) continue;
 
                     try {
-                        const cveResults = db.prepare(`
-                            SELECT cve_id, title, severity, cvss_score
-                            FROM cve_entries
-                            WHERE affected_products LIKE ? AND state = 'PUBLISHED'
-                            ORDER BY cvss_score DESC LIMIT 30
-                        `).all(`%${searchTerm}%`);
+                        const cveResults = cpeMatchStmt.all(`%${searchTerm}%`);
 
                         for (const cve of cveResults) {
                             const key = `${resultKey}:${cve.cve_id}`;
@@ -95,12 +105,7 @@ class CVEService {
                 if (product.length < 3) continue;
 
                 try {
-                    const productResults = db.prepare(`
-                        SELECT cve_id, title, severity, cvss_score
-                        FROM cve_entries
-                        WHERE (affected_products LIKE ? OR title LIKE ?) AND state = 'PUBLISHED'
-                        ORDER BY cvss_score DESC LIMIT 20
-                    `).all(`%${product}%`, `%${product}%`);
+                    const productResults = productMatchStmt.all(`%${product}%`, `%${product}%`);
 
                     for (const cve of productResults) {
                         const key = `${resultKey}:${cve.cve_id}`;
