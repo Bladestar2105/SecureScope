@@ -591,7 +591,7 @@ except:
                             }
                         }
 
-                        // Inject common C headers if missing
+                        // Inject common C headers if missing and sanitize
                         if (exploitData.language === 'c') {
                             const commonHeaders = [
                                 '<stdlib.h>', '<string.h>', '<unistd.h>',
@@ -607,6 +607,9 @@ except:
                             if (includes) {
                                 code = includes + '\n' + code;
                             }
+
+                            // Fix broken multiline strings (common in some exploit DB entries)
+                            code = this._sanitizeCCode(code);
                         }
                         const lhost = params.LHOST || '127.0.0.1';
                         const lport = params.LPORT ? parseInt(params.LPORT) : null;
@@ -702,6 +705,20 @@ except:
                         else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
                         else if (exploitData.language === 'perl') cmd = `perl "${tempFile}"`;
                         else if (exploitData.language === 'java') {
+                            // Check if javac exists
+                            try {
+                                await execPromise('which javac');
+                            } catch (e) {
+                                findings.push({
+                                    type: 'info',
+                                    category: 'Exploit übersprungen',
+                                    title: `Exploit nicht ausführbar: ${exploit.title}`,
+                                    details: 'Java Compiler (javac) nicht gefunden.',
+                                    severity: 'info'
+                                });
+                                continue;
+                            }
+
                             // Compile then run
                             const classPath = tmpDir;
                             await execPromise(`javac "${tempFile}"`);
@@ -881,6 +898,58 @@ except:
             id: key,
             ...val
         }));
+    }
+
+    // Helper to sanitize C code with broken multiline strings
+    _sanitizeCCode(code) {
+        const lines = code.split(/\r?\n/);
+        const outputLines = [];
+        let buffer = '';
+        let inString = false;
+
+        for (let line of lines) {
+            let currentContent = line;
+
+            if (inString) {
+                // If inside a string, assume the newline was accidental and join directly
+                // We trim the start of the next line to remove potential indentation added by editors/tools
+                // that would corrupt binary strings (shellcode) if left as spaces.
+                buffer += currentContent.trimStart();
+            } else {
+                buffer = currentContent;
+            }
+
+            // Check quote parity of buffer (simplified parser)
+            let quotes = 0;
+            for (let i = 0; i < buffer.length; i++) {
+                if (buffer[i] === '"') {
+                    // Check escapes: count preceding backslashes
+                    let backslashes = 0;
+                    let j = i - 1;
+                    while (j >= 0 && buffer[j] === '\\') {
+                        backslashes++;
+                        j--;
+                    }
+                    if (backslashes % 2 === 0) {
+                        quotes++;
+                    }
+                }
+            }
+
+            if (quotes % 2 !== 0) {
+                inString = true;
+            } else {
+                inString = false;
+                outputLines.push(buffer);
+                buffer = '';
+            }
+        }
+
+        if (inString && buffer.length > 0) {
+            outputLines.push(buffer);
+        }
+
+        return outputLines.join('\n');
     }
 }
 
