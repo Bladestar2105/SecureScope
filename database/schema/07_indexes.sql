@@ -20,6 +20,7 @@ CREATE INDEX IF NOT EXISTS idx_exploits_cve ON exploits(cve_id);
 CREATE INDEX IF NOT EXISTS idx_exploits_service ON exploits(service_name);
 CREATE INDEX IF NOT EXISTS idx_exploits_port ON exploits(port);
 CREATE INDEX IF NOT EXISTS idx_scan_exploits_scan ON scan_exploits(scan_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_scan_exploits_unique ON scan_exploits(scan_id, scan_result_id, exploit_id);
 CREATE INDEX IF NOT EXISTS idx_attack_chains_enabled ON attack_chains(enabled);
 CREATE INDEX IF NOT EXISTS idx_attack_executions_scan ON attack_chain_executions(scan_id);
 CREATE INDEX IF NOT EXISTS idx_security_audits_scan ON security_audits(scan_id);

@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS scan_exploits (
     test_result TEXT,
     tested_at DATETIME,
     FOREIGN KEY (scan_id) REFERENCES scans(id) ON DELETE CASCADE,
-    FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE
+    FOREIGN KEY (scan_result_id) REFERENCES scan_results(id) ON DELETE CASCADE,
     -- FOREIGN KEY (exploit_id) REFERENCES exploits(id)
+    UNIQUE(scan_id, scan_result_id, exploit_id)
 );
