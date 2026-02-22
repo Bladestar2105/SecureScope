@@ -21,12 +21,21 @@ class LogStreamService extends EventEmitter {
     }
 
     broadcast(info) {
+        if (!info) return;
+
+        // Extract standard fields and metadata
+        // Winston 3.x puts metadata at top level, but some transports/formats might nest it
+        const { timestamp, level, message, stack, metadata, ...meta } = info;
+
+        // Combine remaining properties and explicit metadata
+        const finalMeta = { ...meta, ...(metadata || {}) };
+
         // Format log entry
         const logEntry = {
-            timestamp: info.timestamp || new Date().toISOString(),
-            level: info.level,
-            message: info.message,
-            meta: info.metadata || {}
+            timestamp: timestamp || new Date().toISOString(),
+            level: level || 'info',
+            message: message || '',
+            meta: finalMeta
         };
 
         // Add to buffer

@@ -2674,7 +2674,9 @@
                 if (e.data === 'connected' || !e.data) return;
                 const entry = JSON.parse(e.data);
                 appendLogEntry(entry);
-            } catch (err) {}
+            } catch (err) {
+                console.error('Error handling log message:', err);
+            }
         };
 
         logEventSource.onerror = () => {
@@ -2699,15 +2701,23 @@
         div.style.marginBottom = '4px';
         div.style.fontFamily = 'monospace';
 
-        const ts = new Date(entry.timestamp).toLocaleTimeString();
+        let ts;
+        try {
+            ts = new Date(entry.timestamp).toLocaleTimeString();
+            if (ts === 'Invalid Date') throw new Error('Invalid Date');
+        } catch (e) {
+            ts = new Date().toLocaleTimeString();
+        }
+
+        const level = (entry.level || 'INFO').toString().toUpperCase();
 
         let color = '#d4d4d4'; // default
-        if (entry.level === 'error') color = '#ef4444';
-        else if (entry.level === 'warn') color = '#f59e0b';
-        else if (entry.level === 'debug') color = '#a3a3a3';
-        else if (entry.level === 'info') color = '#60a5fa';
+        if (level === 'ERROR') color = '#ef4444';
+        else if (level === 'WARN') color = '#f59e0b';
+        else if (level === 'DEBUG') color = '#a3a3a3';
+        else if (level === 'INFO') color = '#60a5fa';
 
-        const levelSpan = `<span style="color:${color};font-weight:bold;min-width:60px;display:inline-block">[${entry.level.toUpperCase()}]</span>`;
+        const levelSpan = `<span style="color:${color};font-weight:bold;min-width:60px;display:inline-block">[${esc(level)}]</span>`;
         const timeSpan = `<span style="color:#666;margin-right:8px">${ts}</span>`;
 
         let message = esc(entry.message || '');
