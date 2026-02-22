@@ -25,6 +25,19 @@ class AttackChainService extends EventEmitter {
         };
     }
 
+    // Helper for IP/Host validation
+    _isValidHost(host) {
+        if (!host) return false;
+        // Allow IPv4
+        const ipv4Regex = /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/;
+        if (ipv4Regex.test(host)) return true;
+
+        // Allow simple Hostnames (RFC 1123 compliant subset, no quotes/semicolons/etc)
+        // Strictly alphanumeric, dots, and hyphens. No spaces, no special chars.
+        const hostnameRegex = /^[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+        return hostnameRegex.test(host);
+    }
+
     // Get all attack chains
     getAll(filters = {}) {
         const db = getDatabase();
@@ -597,6 +610,20 @@ except:
                         }
                         const lhost = params.LHOST || '127.0.0.1';
                         const lport = params.LPORT ? parseInt(params.LPORT) : null;
+
+                        // Security Validation
+                        if (lhost && !this._isValidHost(lhost)) {
+                            throw new Error(`Invalid LHOST: ${lhost}`);
+                        }
+                        if (targetIp && !this._isValidHost(targetIp)) {
+                             throw new Error(`Invalid RHOST/TargetIP: ${targetIp}`);
+                        }
+                        if (lport && (isNaN(lport) || lport < 1 || lport > 65535)) {
+                            throw new Error(`Invalid LPORT: ${lport}`);
+                        }
+                        if (targetPort && (isNaN(targetPort) || targetPort < 1 || targetPort > 65535)) {
+                             throw new Error(`Invalid RPORT: ${targetPort}`);
+                        }
 
                         // Sanity Check for LHOST
                         if (lhost === '127.0.0.1' || lhost === 'localhost') {
