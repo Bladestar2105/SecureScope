@@ -227,6 +227,7 @@ class ScannerService extends EventEmitter {
             args.push(
                 '-sV',                      // Service/version detection
                 '--version-all',            // Try ALL probes for version detection (critical for legacy OS)
+                '--version-intensity', '5', // Maximum intensity for comprehensive version detection
                 '-sC',                      // Default scripts (vuln detection, enum)
                 '-T4',                       // Aggressive timing (fast)
                 '-p', portRange,             // Port range
