@@ -24,15 +24,61 @@ function startServer() {
         schedulerService.initialize();
         logger.info('Scheduler initialized');
 
-        // Check and auto-initialize Metasploit if missing
+        // Check and auto-initialize Metasploit if missing or incomplete
         const msfDir = path.join(__dirname, 'data', 'metasploit');
-        if (!fs.existsSync(msfDir)) {
-            logger.info('Metasploit framework not found. Initializing background download...');
+        const msfConsole = path.join(msfDir, 'msfconsole');
+        const msfGitDir = path.join(msfDir, '.git');
+        const msfNeedsInit = !fs.existsSync(msfDir) || !fs.existsSync(msfGitDir) || !fs.existsSync(msfConsole);
+
+        if (msfNeedsInit) {
+            logger.info('Metasploit framework not found or incomplete. Initializing background download...');
             const workerScript = path.join(__dirname, 'services', 'syncWorker.js');
-            const worker = spawn('node', [workerScript, 'metasploit', '1'], {
-                detached: true,
-                stdio: 'ignore'
+            const worker = spawn('node', ['--max-old-space-size=1024', workerScript, 'metasploit', '1'], {
+                cwd: __dirname,
+                env: { ...process.env, DATABASE_PATH: process.env.DATABASE_PATH || path.join(__dirname, 'database', 'securescope.db') },
+                stdio: ['ignore', 'pipe', 'pipe']
             });
+
+            // Log worker output so progress is visible
+            let workerBuffer = '';
+            worker.stdout.on('data', (data) => {
+                workerBuffer += data.toString();
+                const lines = workerBuffer.split('\n');
+                workerBuffer = lines.pop();
+                for (const line of lines) {
+                    if (!line.trim()) continue;
+                    try {
+                        const msg = JSON.parse(line);
+                        if (msg.phase === 'error') {
+                            logger.error('Metasploit background sync error: ' + msg.message);
+                        } else if (msg.phase === 'done') {
+                            logger.info('Metasploit background sync completed: ' + msg.message);
+                        } else {
+                            logger.info('Metasploit sync: [' + msg.percent + '%] ' + msg.message);
+                        }
+                    } catch (e) {
+                        logger.debug('Metasploit worker output: ' + line);
+                    }
+                }
+            });
+
+            worker.stderr.on('data', (data) => {
+                const errMsg = data.toString().trim();
+                if (errMsg) logger.warn('Metasploit worker stderr: ' + errMsg);
+            });
+
+            worker.on('close', (code) => {
+                if (code === 0) {
+                    logger.info('Metasploit background download completed successfully.');
+                } else {
+                    logger.error('Metasploit background download failed with exit code ' + code);
+                }
+            });
+
+            worker.on('error', (err) => {
+                logger.error('Metasploit background worker spawn error: ' + err.message);
+            });
+
             worker.unref();
             logger.info('Metasploit download started in background.');
         }
