@@ -15,7 +15,10 @@ class ScannerService extends EventEmitter {
         this.activeScans = new Map(); // scanId -> { process, aborted }
         this.MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_SCANS) || 3;
         this.SCAN_TIMEOUT = parseInt(process.env.SCAN_TIMEOUT) || 600000; // 10 min default
+    }
 
+    // Initialize scanner service (must be called after DB init)
+    initialize() {
         // Reset zombie scans on startup
         try {
             const db = getDatabase();

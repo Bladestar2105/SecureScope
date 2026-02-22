@@ -1,6 +1,7 @@
 require('dotenv').config();
 const { initializeDatabase, closeDatabase } = require('./config/database');
 const schedulerService = require('./services/schedulerService');
+const scannerService = require('./services/scanner');
 const logger = require('./services/logger');
 const websocketService = require('./services/websocketService');
 const app = require('./app');
@@ -14,6 +15,10 @@ function startServer() {
     try {
         initializeDatabase();
         logger.info('Database initialized');
+
+        // Initialize scanner service (reset zombie scans)
+        scannerService.initialize();
+        logger.info('Scanner service initialized');
 
         // Initialize scheduler for cron jobs
         schedulerService.initialize();
