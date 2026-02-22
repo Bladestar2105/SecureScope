@@ -819,11 +819,49 @@ async function syncMetasploit(userId) {
             execSafe(`git clone --depth 1 "https://github.com/rapid7/metasploit-framework.git" "${MSF_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
         }
 
-        // Note: bundle install is NOT required for module parsing/import.
-        // Exploit execution uses msfconsole -r which handles its own dependencies.
-        // Skipping bundle install to avoid long delays and potential failures.
+        // Install Ruby gem dependencies so that msfconsole can actually run exploits.
+        // We skip development/test/coverage groups to keep the install fast and lean.
+        emit('download', 25, 'Repository bereit. Installiere Ruby-Abhängigkeiten (bundle install)...');
 
-        emit('download', 40, 'Repository bereit. Suche Module...');
+        // Ensure msfconsole is executable
+        try { execSync(`chmod +x "${path.join(MSF_DIR, 'msfconsole')}"`, { stdio: 'pipe' }); } catch {}
+
+        // Check if bundle install is needed (bundle check returns non-zero if gems are missing)
+        let needsBundleInstall = true;
+        const vendorBundlePath = path.join(MSF_DIR, 'vendor', 'bundle');
+        try {
+            const checkEnv = { ...process.env, BUNDLE_GEMFILE: path.join(MSF_DIR, 'Gemfile'), RAILS_ENV: 'production' };
+            if (fs.existsSync(vendorBundlePath)) {
+                checkEnv.BUNDLE_PATH = vendorBundlePath;
+            }
+            execSync('bundle check', {
+                cwd: MSF_DIR,
+                env: checkEnv,
+                stdio: 'pipe',
+                timeout: 30000
+            });
+            needsBundleInstall = false;
+            emit('download', 35, 'Ruby-Abhängigkeiten bereits installiert. Überspringe bundle install.');
+        } catch {
+            // bundle check failed → gems are missing, need to install
+        }
+
+        if (needsBundleInstall) {
+            try {
+                emit('download', 28, 'Installiere Gems (ohne development/test/coverage). Dies kann einige Minuten dauern...');
+                execSafe(
+                    `cd "${MSF_DIR}" && bundle config set --local without 'development test coverage' && bundle config set --local path 'vendor/bundle' && bundle install --jobs 4`,
+                    { maxBuffer: 50 * 1024 * 1024, timeout: 900000 }
+                );
+                emit('download', 38, 'Ruby-Abhängigkeiten erfolgreich installiert.');
+            } catch (bundleErr) {
+                // bundle install failed - log warning but continue with module import
+                // Module parsing/import does NOT require gems, only exploit execution does
+                emit('download', 35, `Warnung: bundle install fehlgeschlagen (${bundleErr.message.substring(0, 200)}). Modul-Import wird fortgesetzt, aber Exploit-Ausführung wird nicht funktionieren. Stellen Sie sicher, dass Ruby, Bundler und Build-Tools (gcc, make, libpq-dev etc.) installiert sind.`);
+            }
+        }
+
+        emit('download', 40, 'Suche Metasploit-Module...');
 
         const modulesDir = path.join(MSF_DIR, 'modules');
         if (!fs.existsSync(modulesDir)) throw new Error('Modules directory not found');
