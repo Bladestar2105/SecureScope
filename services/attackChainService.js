@@ -753,15 +753,17 @@ except:
                                 }
 
                                 if (!bundleReady) {
-                                    // Gems not installed - skip this exploit with a clear message
+                                    // Gems not installed - log clearly and skip ALL remaining MSF exploits
+                                    logger.warn(`Metasploit Gems nicht installiert – Exploit ${exploit.id} (${exploit.title}) übersprungen. Bitte Metasploit-Sync erneut durchführen.`);
                                     findings.push({
                                         type: 'error',
                                         category: 'Metasploit nicht bereit',
-                                        title: `Metasploit Gems fehlen: ${exploit.title}`,
-                                        details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhängigkeiten (Gems) sind nicht installiert. Bitte führen Sie die Metasploit-Synchronisation erneut durch – dabei werden die Gems automatisch installiert.',
-                                        severity: 'medium'
+                                        title: 'Metasploit Ruby-Abhängigkeiten fehlen',
+                                        details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhängigkeiten (Gems) sind nicht installiert. Bitte führen Sie die Metasploit-Synchronisation erneut durch (DB Update → Metasploit) – dabei werden die Gems automatisch installiert.',
+                                        severity: 'high'
                                     });
-                                    continue;
+                                    // Break out of exploit loop - no point trying more MSF exploits without gems
+                                    break;
                                 }
 
                                 // Run msfconsole as executable with proper Bundler env

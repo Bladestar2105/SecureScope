@@ -82,7 +82,7 @@ function spawnSyncWorker(type, userId) {
 function broadcastProgress(type, data) {
     const clients = sseClients.get(type);
     if (!clients) return;
-    const msg = `data: ${JSON.stringify(data)}\n\n`;
+    const msg = "data: " + JSON.stringify(data) + "\n\n";
     for (const res of clients) {
         try { res.write(msg); } catch {}
     }
@@ -112,7 +112,7 @@ router.get('/progress/:type', requireAuth, (req, res) => {
     sseClients.get(type).add(res);
 
     // Send initial status
-    res.write(`data: ${JSON.stringify({ phase: 'connected', percent: 0, message: 'Verbunden. Warte auf Sync-Start...' })}\n\n`);
+    res.write("data: " + JSON.stringify({ phase: "connected", percent: 0, message: "Verbunden. Warte auf Sync-Start..." }) + "\n\n");
 
     req.on('close', () => {
         const clients = sseClients.get(type);
