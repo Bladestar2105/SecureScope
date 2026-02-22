@@ -700,7 +700,7 @@ except:
                         logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
 
                         let cmd = '';
-                        // Metasploit Execution Wrapper - use msfconsole -x for reliable execution
+                        // Metasploit Execution Wrapper - use msfconsole -r for reliable execution
                         if (exploit.source === 'metasploit' || (exploitData.language === 'ruby' && exploitData.code.includes('Msf::'))) {
                             const msfRoot = path.join(__dirname, '..', 'data', 'metasploit');
                             const msfConsole = path.join(msfRoot, 'msfconsole');
@@ -727,9 +727,57 @@ except:
                             const rcFile = path.join(tmpDir, 'exploit.rc');
                             fs.writeFileSync(rcFile, rcLines.join("\n") + "\n");
 
-                            // Check if msfconsole exists
+                            // Check if msfconsole exists in local clone
                             if (fs.existsSync(msfConsole)) {
-                                cmd = 'cd "' + msfRoot + '" && ruby "' + msfConsole + '" -q -r "' + rcFile + '"';
+                                // Verify that bundle install has been run (Gemfile.lock + vendor/bundle or system gems)
+                                const gemfilePath = path.join(msfRoot, 'Gemfile');
+                                const vendorBundlePath = path.join(msfRoot, 'vendor', 'bundle');
+                                let bundleReady = false;
+                                try {
+                                    // Quick check: try running bundle check to see if gems are installed
+                                    const { execSync: execSyncLocal } = require('child_process');
+                                    const bundleEnv = { ...process.env, BUNDLE_GEMFILE: gemfilePath, RAILS_ENV: 'production' };
+                                    // If vendor/bundle exists, tell Bundler where to find gems
+                                    if (fs.existsSync(vendorBundlePath)) {
+                                        bundleEnv.BUNDLE_PATH = vendorBundlePath;
+                                    }
+                                    execSyncLocal('bundle check', {
+                                        cwd: msfRoot,
+                                        env: bundleEnv,
+                                        stdio: 'pipe',
+                                        timeout: 15000
+                                    });
+                                    bundleReady = true;
+                                } catch (bundleErr) {
+                                    bundleReady = false;
+                                }
+
+                                if (!bundleReady) {
+                                    // Gems not installed - skip this exploit with a clear message
+                                    findings.push({
+                                        type: 'error',
+                                        category: 'Metasploit nicht bereit',
+                                        title: `Metasploit Gems fehlen: ${exploit.title}`,
+                                        details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhängigkeiten (Gems) sind nicht installiert. Bitte führen Sie die Metasploit-Synchronisation erneut durch – dabei werden die Gems automatisch installiert.',
+                                        severity: 'medium'
+                                    });
+                                    continue;
+                                }
+
+                                // Run msfconsole as executable with proper Bundler env
+                                // BUNDLE_GEMFILE: points to the correct Gemfile
+                                // BUNDLE_PATH: where gems were installed by syncWorker (vendor/bundle)
+                                // RAILS_ENV: production to skip dev/test gem groups
+                                const bundlePath = path.join(msfRoot, 'vendor', 'bundle');
+                                const envVars = [
+                                    'BUNDLE_GEMFILE="' + gemfilePath + '"',
+                                    'RAILS_ENV=production'
+                                ];
+                                // Only set BUNDLE_PATH if vendor/bundle exists (local install mode)
+                                if (fs.existsSync(bundlePath)) {
+                                    envVars.push('BUNDLE_PATH="' + bundlePath + '"');
+                                }
+                                cmd = 'cd "' + msfRoot + '" && ' + envVars.join(' ') + ' ./msfconsole -q -r "' + rcFile + '"';
                             } else {
                                 // Fallback: try system-installed msfconsole
                                 cmd = 'msfconsole -q -r "' + rcFile + '"';
