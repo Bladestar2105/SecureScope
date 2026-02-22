@@ -720,11 +720,29 @@ async function syncGHDB(userId) {
         // Helper to get text safely
         const getVal = (v) => (typeof v === 'string' ? v : (v && v['#text'] ? v['#text'] : ''));
 
+        let autoIdCounter = 1;
+
         for (const entry of entries) {
+            let ghdbId = getVal(entry.id);
+            // Fallback: check attributes or generate ID
+            if (!ghdbId || ghdbId === '') {
+                if (entry['@_id']) ghdbId = entry['@_id'];
+            }
+            if (!ghdbId || ghdbId === '') {
+                // If still no ID, use auto-generated one to prevent constraint violation
+                // Check if query is valid at least
+                const q = getVal(entry.query);
+                if (!q) continue;
+                ghdbId = `GHDB-AUTO-${autoIdCounter++}`;
+            }
+
+            const query = getVal(entry.query);
+            if (!query) continue; // Must have a dork
+
             batchList.push({
-                id: getVal(entry.id),
-                query: getVal(entry.query),
-                category: getVal(entry.category),
+                id: ghdbId,
+                query: query,
+                category: getVal(entry.category) || 'Other',
                 short: getVal(entry.short_description),
                 desc: getVal(entry.textual_description),
                 date: getVal(entry.date),
@@ -734,8 +752,12 @@ async function syncGHDB(userId) {
             if (batchList.length >= BATCH) {
                 database.transaction((items) => {
                     for (const i of items) {
-                        insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
-                        added++;
+                        try {
+                            insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
+                            added++;
+                        } catch (e) {
+                            // Ignore duplicates if they occur despite filtering
+                        }
                     }
                 })(batchList);
                 batchList.length = 0;
@@ -745,8 +767,10 @@ async function syncGHDB(userId) {
         if (batchList.length > 0) {
             database.transaction((items) => {
                 for (const i of items) {
-                    insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
-                    added++;
+                    try {
+                        insertStmt.run(i.id, i.query, i.category, i.short, i.desc, i.date, i.author);
+                        added++;
+                    } catch (e) {}
                 }
             })(batchList);
         }
@@ -792,6 +816,15 @@ async function syncMetasploit(userId) {
             // Clone only modules folder if possible? No, partial clone is complex. Shallow clone of full repo.
             execSafe(`git clone --depth 1 "https://github.com/rapid7/metasploit-framework.git" "${MSF_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
         }
+
+        // Run bundle install to ensure dependencies for execution
+        emit('download', 35, 'Installiere Metasploit Abhängigkeiten (bundle install)...');
+        try {
+            execSafe('bundle install', { cwd: MSF_DIR, maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
+        } catch (e) {
+            emit('download', 38, `Warnung: Bundle install fehlgeschlagen: ${e.message}. Ausführung könnte beeinträchtigt sein.`);
+        }
+
         emit('download', 40, 'Repository bereit. Suche Module...');
 
         const modulesDir = path.join(MSF_DIR, 'modules');

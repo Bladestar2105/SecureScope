@@ -4,6 +4,9 @@ const schedulerService = require('./services/schedulerService');
 const logger = require('./services/logger');
 const websocketService = require('./services/websocketService');
 const app = require('./app');
+const path = require('path');
+const fs = require('fs');
+const { spawn } = require('child_process');
 
 const PORT = process.env.PORT || 3000;
 
@@ -15,6 +18,19 @@ function startServer() {
         // Initialize scheduler for cron jobs
         schedulerService.initialize();
         logger.info('Scheduler initialized');
+
+        // Check and auto-initialize Metasploit if missing
+        const msfDir = path.join(__dirname, 'data', 'metasploit');
+        if (!fs.existsSync(msfDir)) {
+            logger.info('Metasploit framework not found. Initializing background download...');
+            const workerScript = path.join(__dirname, 'services', 'syncWorker.js');
+            const worker = spawn('node', [workerScript, 'metasploit', '1'], {
+                detached: true,
+                stdio: 'ignore'
+            });
+            worker.unref();
+            logger.info('Metasploit download started in background.');
+        }
 
         const server = app.listen(PORT, () => {
             logger.info(`SecureScope Server läuft auf Port ${PORT}`);

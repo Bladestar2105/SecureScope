@@ -15,6 +15,17 @@ class ScannerService extends EventEmitter {
         this.activeScans = new Map(); // scanId -> { process, aborted }
         this.MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_SCANS) || 3;
         this.SCAN_TIMEOUT = parseInt(process.env.SCAN_TIMEOUT) || 600000; // 10 min default
+
+        // Reset zombie scans on startup
+        try {
+            const db = getDatabase();
+            const res = db.prepare("UPDATE scans SET status = 'failed', error_message = 'System restart (Zombie scan)', completed_at = CURRENT_TIMESTAMP WHERE status = 'running'").run();
+            if (res.changes > 0) {
+                logger.info(`Reset ${res.changes} zombie scans to failed state.`);
+            }
+        } catch (e) {
+            console.error('Failed to reset zombie scans:', e);
+        }
     }
 
     // Top 100 ports for quick scan
@@ -518,6 +529,16 @@ class ScannerService extends EventEmitter {
             logger.info(`Scan ${scanId} abort requested`);
             logger.audit('SCAN_ABORTED', { scanId });
             return true;
+        } else {
+            // Handle zombie scans (process gone but DB says running)
+            const db = getDatabase();
+            const scan = db.prepare('SELECT status FROM scans WHERE id = ?').get(scanId);
+            if (scan && scan.status === 'running') {
+                db.prepare("UPDATE scans SET status = 'aborted', completed_at = CURRENT_TIMESTAMP WHERE id = ?").run(scanId);
+                logger.info(`Zombie scan ${scanId} manually aborted`);
+                logger.audit('SCAN_ABORTED_MANUAL', { scanId });
+                return true;
+            }
         }
         return false;
     }
