@@ -44,6 +44,7 @@ RUN apt-get update && apt-get install -y \
     netcat-openbsd \
     socat \
     gcc \
+    g++ \
     make \
     # Libraries for Metasploit native gems
     libpcap-dev \
@@ -55,7 +56,7 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko \
-    && gem install bundler
+    && gem install bundler -v 2.5.22 --no-document
 
 # Copy production dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules

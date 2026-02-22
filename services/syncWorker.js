@@ -857,8 +857,12 @@ async function syncMetasploit(userId) {
             } catch (bundleErr) {
                 // bundle install failed - log warning but continue with module import
                 // Module parsing/import does NOT require gems, only exploit execution does
-                const errMsg = bundleErr.message.substring(0, 800);
-                emit('download', 35, `Warnung: bundle install fehlgeschlagen (${errMsg}). Modul-Import wird fortgesetzt, aber Exploit-Ausführung wird nicht funktionieren. Stellen Sie sicher, dass Ruby, Bundler und Build-Tools (gcc, make, libpq-dev etc.) installiert sind.`);
+                // Extract the most useful part of the error (stderr has actual errors, stdout has verbose output)
+                const fullMsg = bundleErr.message || '';
+                const stderrMatch = fullMsg.match(/STDERR:\s*([\s\S]*?)(?:\nError:|$)/);
+                const stderrMsg = stderrMatch ? stderrMatch[1].trim() : '';
+                const errMsg = stderrMsg || fullMsg.substring(fullMsg.length - 500);
+                emit('download', 35, `Warnung: bundle install fehlgeschlagen (${errMsg.substring(0, 500)}). Modul-Import wird fortgesetzt, aber Exploit-Ausführung wird nicht funktionieren. Stellen Sie sicher, dass Ruby, Bundler (v2.5.22) und Build-Tools (gcc, g++, make, libpq-dev, libxml2-dev etc.) installiert sind.`);
             }
         }
 
