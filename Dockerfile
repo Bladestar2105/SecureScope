@@ -29,6 +29,7 @@ FROM node:20-slim
 WORKDIR /app
 
 # Install runtime dependencies (nmap, curl, unzip, git for sync workers)
+# Also install libraries needed for Metasploit native gems (nokogiri, pcaprub, pg, sqlite3, etc.)
 RUN apt-get update && apt-get install -y \
     nmap \
     curl \
@@ -44,9 +45,14 @@ RUN apt-get update && apt-get install -y \
     socat \
     gcc \
     make \
+    # Libraries for Metasploit native gems
     libpcap-dev \
     libsqlite3-dev \
     libpq-dev \
+    libxml2-dev \
+    libxslt1-dev \
+    libssl-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko \
     && gem install bundler
