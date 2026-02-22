@@ -1,7 +1,7 @@
 const winston = require('winston');
 const DailyRotateFile = require('winston-daily-rotate-file');
 const path = require('path');
-const Transport = winston.transport;
+const Transport = winston.Transport;
 const logStreamService = require('./logStreamService');
 
 const logDir = path.join(__dirname, '..', 'logs');
