@@ -16,10 +16,12 @@ const SENSITIVE_KEYS = [
 const IGNORED_KEYS = ['level', 'message', 'timestamp', 'stack'];
 
 // Custom format to mask sensitive data in metadata
+// IMPORTANT: Winston requires Symbol.for('level') and Symbol.for('splat') on the info object.
+// We must mutate in-place or copy Symbols when cloning, otherwise the pipeline silently drops messages.
 const maskSensitiveData = winston.format((info) => {
-    const seen = new WeakMap();
+    const seen = new WeakSet();
 
-    const mask = (val, key) => {
+    const maskValue = (val, key) => {
         // Mask sensitive keys (except internal winston keys)
         if (key && typeof key === 'string' && !IGNORED_KEYS.includes(key)) {
             const isSensitive = SENSITIVE_KEYS.some(sk =>
@@ -33,22 +35,29 @@ const maskSensitiveData = winston.format((info) => {
 
         // Handle circular references
         if (seen.has(val)) return '[Circular]';
-        seen.set(val, true);
+        seen.add(val);
 
         if (Array.isArray(val)) {
-            return val.map(item => mask(item));
+            return val.map(item => maskValue(item));
         }
 
+        // For nested objects (not the top-level info), clone them
         const cloned = {};
         for (const k in val) {
             if (Object.prototype.hasOwnProperty.call(val, k)) {
-                cloned[k] = mask(val[k], k);
+                cloned[k] = maskValue(val[k], k);
             }
         }
         return cloned;
     };
 
-    return mask(info);
+    // Mask sensitive values in-place on the info object to preserve Winston Symbols
+    for (const key of Object.keys(info)) {
+        if (IGNORED_KEYS.includes(key)) continue;
+        info[key] = maskValue(info[key], key);
+    }
+
+    return info;
 });
 
 const logFormat = winston.format.combine(
