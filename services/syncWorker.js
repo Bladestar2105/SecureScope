@@ -504,6 +504,8 @@ async function syncExploits(userId) {
         const lines = csvData.split('\n');
         emit('parse', 40, `${lines.length} Zeilen gefunden. Importiere...`);
 
+        // Clean up orphaned scan_exploits before deleting exploits
+        database.prepare("DELETE FROM scan_exploits WHERE exploit_id IN (SELECT id FROM exploits WHERE source = 'exploit-db')").run();
         database.prepare("DELETE FROM exploits WHERE source = 'exploit-db'").run();
 
         const insertStmt = database.prepare(`
@@ -817,20 +819,17 @@ async function syncMetasploit(userId) {
             execSafe(`git clone --depth 1 "https://github.com/rapid7/metasploit-framework.git" "${MSF_DIR}"`, { maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
         }
 
-        // Run bundle install to ensure dependencies for execution
-        emit('download', 35, 'Installiere Metasploit Abhängigkeiten (bundle install)...');
-        try {
-            execSafe('bundle install', { cwd: MSF_DIR, maxBuffer: 50 * 1024 * 1024, timeout: 600000 });
-        } catch (e) {
-            emit('download', 38, `Warnung: Bundle install fehlgeschlagen: ${e.message}. Ausführung könnte beeinträchtigt sein.`);
-        }
+        // Note: bundle install is NOT required for module parsing/import.
+        // Exploit execution uses msfconsole -r which handles its own dependencies.
+        // Skipping bundle install to avoid long delays and potential failures.
 
         emit('download', 40, 'Repository bereit. Suche Module...');
 
         const modulesDir = path.join(MSF_DIR, 'modules');
         if (!fs.existsSync(modulesDir)) throw new Error('Modules directory not found');
 
-        // Clean old MSF entries
+        // Clean old MSF entries - clean up orphaned scan_exploits first
+        database.prepare("DELETE FROM scan_exploits WHERE exploit_id IN (SELECT id FROM exploits WHERE source = 'metasploit')").run();
         database.prepare("DELETE FROM exploits WHERE source = 'metasploit'").run();
 
         const insertStmt = database.prepare(`

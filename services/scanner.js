@@ -226,7 +226,8 @@ class ScannerService extends EventEmitter {
         } else {
             args.push(
                 '-sV',                      // Service/version detection
-                '--version-intensity', '5',  // Balanced version detection intensity (0-9)
+                '--version-all',            // Try ALL probes for version detection (critical for legacy OS)
+                '-sC',                      // Default scripts (vuln detection, enum)
                 '-T4',                       // Aggressive timing (fast)
                 '-p', portRange,             // Port range
                 '-oX', '-',                  // XML output to stdout
@@ -245,7 +246,7 @@ class ScannerService extends EventEmitter {
         // Add OS detection (requires root)
         const isRoot = process.getuid && process.getuid() === 0;
         if (isRoot) {
-            args.push('-O', '--osscan-guess');
+            args.push('-O', '--osscan-guess', '--osscan-limit');
         }
 
         args.push(target);

