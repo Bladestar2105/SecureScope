@@ -61,7 +61,7 @@ class CredentialService {
     // Get all credentials for a user (passwords masked)
     static getAll(userId, filters = {}) {
         const db = getDatabase();
-        let query = 'SELECT id, name, credential_type, username, domain, auth_method, target_scope, description, tags, last_used_at, is_valid, created_at, updated_at FROM credentials WHERE created_by = ?';
+        let query = 'SELECT id, name, credential_type, username, domain, auth_method, target_scope, description, tags, last_used_at, is_valid, created_at, updated_at, password_encrypted, ssh_key_encrypted FROM credentials WHERE created_by = ?';
         const params = [userId];
 
         if (filters.type) {
@@ -86,12 +86,20 @@ class CredentialService {
 
         const results = db.prepare(query).all(...params);
 
-        return results.map(cred => ({
-            ...cred,
-            tags: JSON.parse(cred.tags || '[]'),
-            hasPassword: !!db.prepare('SELECT password_encrypted FROM credentials WHERE id = ?').get(cred.id)?.password_encrypted,
-            hasSshKey: !!db.prepare('SELECT ssh_key_encrypted FROM credentials WHERE id = ?').get(cred.id)?.ssh_key_encrypted
-        }));
+        return results.map(cred => {
+            const mapped = {
+                ...cred,
+                tags: JSON.parse(cred.tags || '[]'),
+                hasPassword: !!cred.password_encrypted,
+                hasSshKey: !!cred.ssh_key_encrypted
+            };
+
+            // Remove encrypted fields to keep them masked in the list view
+            delete mapped.password_encrypted;
+            delete mapped.ssh_key_encrypted;
+
+            return mapped;
+        });
     }
 
     // Get credential by ID (with decrypted data for internal use)
