@@ -9,96 +9,96 @@
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-    <div class="login-wrapper">
-        <div class="login-container">
-            <div class="login-card">
-                <div class="login-logo">
-                    <div class="logo-icon">🛡️</div>
+    <div  class="login-wrapper">
+        <div  class="login-container">
+            <div  class="login-card">
+                <div  class="login-logo">
+                    <div  class="logo-icon">🛡️</div>
                     <h1>SecureScope</h1>
                     <p>Network Security Audit Tool</p>
                 </div>
 
                 <!-- Login Form -->
                 <form id="loginForm" autocomplete="off">
-                    <div class="form-group">
+                    <div  class="form-group">
                         <label for="username">Benutzername</label>
-                        <div class="input-group">
-                            <i class="bi bi-person input-icon"></i>
-                            <input type="text" id="username" class="form-control" placeholder="Benutzername eingeben" required autofocus>
+                        <div  class="input-group">
+                            <i  class="bi bi-person input-icon"></i>
+                            <input type="text" id="username"  placeholder="Benutzername eingeben" required autofocus class="form-control">
                         </div>
                     </div>
-                    <div class="form-group">
+                    <div  class="form-group">
                         <label for="password">Passwort</label>
-                        <div class="input-group">
-                            <i class="bi bi-lock input-icon"></i>
-                            <input type="password" id="password" class="form-control" placeholder="Passwort eingeben" required>
-                            <button type="button" id="togglePassword" class="password-toggle" aria-label="Passwort anzeigen">
-                                <i class="bi bi-eye"></i>
+                        <div  class="input-group">
+                            <i  class="bi bi-lock input-icon"></i>
+                            <input type="password" id="password"  placeholder="Passwort eingeben" required class="form-control">
+                            <button type="button" id="togglePassword"  aria-label="Passwort anzeigen" class="password-toggle">
+                                <i  class="bi bi-eye"></i>
                             </button>
                         </div>
                     </div>
-                    <div id="loginError" class="hidden" style="color: var(--accent-red); font-size: 0.8125rem; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--accent-red-bg); border-radius: var(--radius-sm);">
+                    <div id="loginError"  class="hidden error-box">
                     </div>
-                    <button type="submit" id="loginBtn" class="btn btn-primary btn-block btn-lg">
+                    <button type="submit" id="loginBtn"  class="btn btn-primary btn-block btn-lg">
                         <span id="loginBtnText">Anmelden</span>
-                        <span id="loginSpinner" class="spinner hidden"></span>
+                        <span id="loginSpinner"  class="spinner hidden"></span>
                     </button>
                 </form>
 
                 <!-- Password Change Form (hidden by default) -->
-                <form id="passwordChangeForm" class="hidden" autocomplete="off">
-                    <div style="text-align: center; margin-bottom: 1.5rem;">
-                        <i class="bi bi-shield-exclamation" style="font-size: 2rem; color: var(--accent-yellow);"></i>
-                        <h3 style="margin-top: 0.5rem; font-size: 1.125rem;">Passwortänderung erforderlich</h3>
-                        <p style="color: var(--text-muted); font-size: 0.875rem; margin-top: 0.25rem;">
+                <form id="passwordChangeForm"  autocomplete="off" class="hidden">
+                    <div  class="text-center mb-15">
+                        <i  class="bi bi-shield-exclamation fs-2 color-yellow"></i>
+                        <h3  class="mt-05 fs-1125">Passwortänderung erforderlich</h3>
+                        <p  class="color-muted fs-0875 mt-025">
                             Bitte ändern Sie Ihr Standard-Passwort
                         </p>
                     </div>
-                    <div class="form-group">
+                    <div  class="form-group">
                         <label for="currentPassword">Aktuelles Passwort</label>
-                        <div class="input-group">
-                            <i class="bi bi-lock input-icon"></i>
-                            <input type="password" id="currentPassword" class="form-control" placeholder="Aktuelles Passwort" required>
+                        <div  class="input-group">
+                            <i  class="bi bi-lock input-icon"></i>
+                            <input type="password" id="currentPassword"  placeholder="Aktuelles Passwort" required class="form-control">
                         </div>
                     </div>
-                    <div class="form-group">
+                    <div  class="form-group">
                         <label for="newPassword">Neues Passwort</label>
-                        <div class="input-group">
-                            <i class="bi bi-key input-icon"></i>
-                            <input type="password" id="newPassword" class="form-control" placeholder="Neues Passwort" required>
+                        <div  class="input-group">
+                            <i  class="bi bi-key input-icon"></i>
+                            <input type="password" id="newPassword"  placeholder="Neues Passwort" required class="form-control">
                         </div>
                     </div>
-                    <div class="form-group">
+                    <div  class="form-group">
                         <label for="confirmPassword">Passwort bestätigen</label>
-                        <div class="input-group">
-                            <i class="bi bi-key-fill input-icon"></i>
-                            <input type="password" id="confirmPassword" class="form-control" placeholder="Passwort wiederholen" required>
+                        <div  class="input-group">
+                            <i  class="bi bi-key-fill input-icon"></i>
+                            <input type="password" id="confirmPassword"  placeholder="Passwort wiederholen" required class="form-control">
                         </div>
                     </div>
-                    <ul class="password-requirements" id="passwordRequirements">
+                    <ul  id="passwordRequirements" class="password-requirements">
                         <li id="reqLength">Mindestens 8 Zeichen</li>
                         <li id="reqUpper">Mindestens ein Großbuchstabe</li>
                         <li id="reqLower">Mindestens ein Kleinbuchstabe</li>
                         <li id="reqNumber">Mindestens eine Zahl</li>
                         <li id="reqMatch">Passwörter stimmen überein</li>
                     </ul>
-                    <div id="pwChangeError" class="hidden" style="color: var(--accent-red); font-size: 0.8125rem; margin-bottom: 1rem; padding: 0.5rem 0.75rem; background: var(--accent-red-bg); border-radius: var(--radius-sm);">
+                    <div id="pwChangeError"  class="hidden error-box">
                     </div>
-                    <button type="submit" id="pwChangeBtn" class="btn btn-success btn-block btn-lg mt-2">
+                    <button type="submit" id="pwChangeBtn"  class="btn btn-success btn-block btn-lg mt-2">
                         <span id="pwChangeBtnText">Passwort ändern</span>
-                        <span id="pwChangeSpinner" class="spinner hidden"></span>
+                        <span id="pwChangeSpinner"  class="spinner hidden"></span>
                     </button>
                 </form>
             </div>
 
-            <p style="text-align: center; margin-top: 1.5rem; font-size: 0.75rem; color: var(--text-muted);">
+            <p  class="text-center mt-15 fs-075 color-muted">
                 SecureScope v1.0 &mdash; Network Security Audit Tool
             </p>
         </div>
     </div>
 
     <!-- Toast Container -->
-    <div class="toast-container" id="toastContainer"></div>
+    <div  id="toastContainer" class="toast-container"></div>
 
     <script src="js/login.js"></script>
 </body>
