@@ -14,7 +14,8 @@ const path = require('path');
 const fs = require('fs');
 const https = require('https');
 const http = require('http');
-const { execSync } = require('child_process');
+const { execSync, spawn } = require('child_process');
+const readline = require('readline');
 const { XMLParser } = require('fast-xml-parser');
 
 const Database = require('better-sqlite3');
@@ -193,72 +194,75 @@ async function syncCVE(userId) {
             emit('extract', 33, `Setze fort ab Jahr ${yearList[startYearIdx] || 'Ende'} (${totalProcessed} bereits verarbeitet)...`);
         }
 
-        // Step 3: Extract and process year by year
+        // Step 3: Extract and process year by year (streaming)
+        const pythonScript = path.join(__dirname, '..', 'scripts', 'extract_cve_zip.py');
+
         for (let yi = startYearIdx; yi < yearList.length; yi++) {
             const year = yearList[yi];
-            const yearExtractDir = path.join(CVE_DIR, 'year_tmp');
 
-            // Clean previous year extraction
-            if (fs.existsSync(yearExtractDir)) execSync(`rm -rf "${yearExtractDir}"`);
-            ensureDir(yearExtractDir);
-
-            // Extract only this year's files from the zip
-            emit('extract', 33 + Math.round((yi / yearList.length) * 5), `Entpacke Jahr ${year}...`);
-            try {
-                execSafe(`unzip -q -o "${zipPath}" "cvelistV5-main/cves/${year}/*" -d "${yearExtractDir}"`, {
-                    maxBuffer: 50 * 1024 * 1024, timeout: 120000
-                });
-            } catch (e) {
-                // Some years might not exist in zip
-                totalErrors++;
-                emit('extract', 33 + Math.round((yi / yearList.length) * 5), `Warnung: Jahr ${year} konnte nicht entpackt werden: ${e.message}`);
-                continue;
-            }
-
-            const yearCvesDir = path.join(yearExtractDir, 'cvelistV5-main', 'cves', year);
-            if (!fs.existsSync(yearCvesDir)) {
-                execSync(`rm -rf "${yearExtractDir}"`);
-                continue;
-            }
-
-            // Process all JSON files in this year
-            let subDirs;
-            try {
-                subDirs = fs.readdirSync(yearCvesDir).filter(d => {
-                    try { return fs.statSync(path.join(yearCvesDir, d)).isDirectory(); } catch { return false; }
-                });
-            } catch { subDirs = []; }
+            // Progress calculation: start at 33%, span 60%
+            const pctStart = 33 + Math.round((yi / yearList.length) * 60);
+            emit('import', Math.min(pctStart, 93), `Verarbeite Jahr ${year} (Stream)...`);
 
             let batch = [];
             let yearAdded = 0;
             const BATCH_SIZE = 500;
 
-            for (const sub of subDirs) {
-                const subPath = path.join(yearCvesDir, sub);
-                let files;
-                try { files = fs.readdirSync(subPath).filter(f => f.endsWith('.json')); } catch { continue; }
+            try {
+                // Stream files via Python helper to avoid disk I/O
+                const child = spawn('python3', [pythonScript, zipPath, year], {
+                    stdio: ['ignore', 'pipe', 'pipe']
+                });
 
-                for (const file of files) {
+                const rl = readline.createInterface({
+                    input: child.stdout,
+                    crlfDelay: Infinity
+                });
+
+                child.stderr.on('data', (data) => {
+                    // Only log errors if needed, maybe suppress warnings
+                    const msg = data.toString().trim();
+                    if (msg && !msg.includes('Error processing')) console.error(`[Python stderr] ${msg}`);
+                });
+
+                // Track process completion/error
+                const completionPromise = new Promise((resolve, reject) => {
+                    child.on('error', (err) => reject(new Error(`Failed to spawn python script: ${err.message}`)));
+                    child.on('close', (code) => {
+                        if (code !== 0) reject(new Error(`Python script exited with code ${code}`));
+                        else resolve();
+                    });
+                });
+                // Suppress unhandled rejection warning until we await it
+                completionPromise.catch(() => {});
+
+                for await (const line of rl) {
+                    if (!line.trim()) continue;
                     totalProcessed++;
                     try {
-                        const raw = fs.readFileSync(path.join(subPath, file), 'utf8');
-                        const cveData = JSON.parse(raw);
+                        const cveData = JSON.parse(line);
                         const parsed = parseCVEv5(cveData);
                         if (parsed) batch.push(parsed);
                     } catch (err) {
                         totalErrors++;
-                        console.error(`Error parsing CVE file ${file}: ${err.message}`);
                     }
 
                     if (batch.length >= BATCH_SIZE) {
-                        const before = totalAdded;
                         insertBatch(batch);
                         totalAdded += batch.length;
                         yearAdded += batch.length;
                         batch = [];
-                        if (totalProcessed % 5000 === 0) await sleep(20);
+                        if (totalProcessed % 5000 === 0) await sleep(5);
                     }
                 }
+
+                // Ensure process finished successfully
+                await completionPromise;
+
+            } catch (err) {
+                totalErrors++;
+                console.error(`Error streaming year ${year}: ${err.message}`);
+                continue; // Skip checkpoint for this year on failure
             }
 
             // Flush remaining
@@ -269,11 +273,8 @@ async function syncCVE(userId) {
                 batch = [];
             }
 
-            // Clean up this year's extraction immediately
-            execSync(`rm -rf "${yearExtractDir}"`);
-
-            const pct = 38 + Math.round((yi / yearList.length) * 55);
-            emit('import', Math.min(pct, 94), `Jahr ${year}: +${yearAdded} | Gesamt: ${totalAdded} importiert / ${totalProcessed} verarbeitet`);
+            const pctEnd = 33 + Math.round(((yi + 1) / yearList.length) * 60);
+            emit('import', Math.min(pctEnd, 94), `Jahr ${year}: +${yearAdded} | Gesamt: ${totalAdded} importiert / ${totalProcessed} verarbeitet`);
 
             // Save checkpoint
             saveCheckpoint('cve', { lastYearIdx: yi, totalProcessed, totalAdded, totalErrors });
@@ -284,7 +285,6 @@ async function syncCVE(userId) {
 
         // Step 4: Cleanup
         emit('cleanup', 95, 'Räume auf...');
-        try { execSync(`rm -rf "${path.join(CVE_DIR, 'year_tmp')}"`); } catch {}
         // Delete the zip to free disk space
         try { if (fs.existsSync(zipPath)) fs.unlinkSync(zipPath); } catch {}
         // Delete any leftover extracted dir
