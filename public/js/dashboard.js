@@ -19,9 +19,17 @@
         const icons = { success:'bi-check-circle-fill', error:'bi-x-circle-fill', warning:'bi-exclamation-triangle-fill', info:'bi-info-circle-fill' };
         const toast = document.createElement('div');
         toast.className = `toast toast-${type}`;
-        toast.innerHTML = `<i class="bi ${icons[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${esc(title)}</div><div class="toast-message">${esc(message)}</div></div><button class="toast-close" onclick="this.parentElement.classList.add('removing');setTimeout(()=>this.parentElement.remove(),300)" aria-label="Benachrichtigung schließen"><i class="bi bi-x"></i></button>`;
+        toast.innerHTML = `<i class="bi ${icons[type]} toast-icon"></i><div class="toast-content"><div class="toast-title">${esc(title)}</div><div class="toast-message">${esc(message)}</div></div><button class="toast-close" data-action="removeToast" aria-label="Benachrichtigung schließen"><i class="bi bi-x"></i></button>`;
         container.appendChild(toast);
         setTimeout(() => { if (toast.parentElement) { toast.classList.add('removing'); setTimeout(() => toast.remove(), 300); } }, 5000);
+    };
+
+    window.removeToast = function() {
+        const toast = this.closest('.toast');
+        if (toast) {
+            toast.classList.add('removing');
+            setTimeout(() => toast.remove(), 300);
+        }
     };
 
     // ============================================
@@ -233,7 +241,7 @@
     }
     function confidenceBar(val) {
         const color = val >= 80 ? 'var(--accent-green)' : val >= 60 ? 'var(--accent-yellow)' : 'var(--accent-red)';
-        return `<div class="confidence-bar-container"><div class="confidence-bar" style="width:${val}%;background:${color}"></div><span class="confidence-text">${val}%</span></div>`;
+        const div = document.createElement('div'); div.className = 'confidence-bar-container'; div.innerHTML = `<div class="confidence-bar"></div><span class="confidence-text">${val}%</span>`; const bar = div.querySelector('.confidence-bar'); bar.style.width = val + '%'; bar.style.background = color; return div.outerHTML;
     }
 
     // ============================================
@@ -274,7 +282,7 @@
                     <td>#${s.id}</td><td>${esc(s.target)}</td><td>${scanTypeBadge(s.scan_type)}</td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
-                    <td><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button></td>
+                    <td><button class="btn btn-outline btn-sm" data-action="viewScanDetail" data-arg0="${s.id}"><i class="bi bi-eye"></i></button></td>
                 </tr>`).join('');
             } else {
                 table.classList.add('hidden');
@@ -359,17 +367,17 @@
                     // Find first OS info
                     const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
 
-                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
-                        <td colspan="6" style="padding:0.75rem 1rem">
+                    html += `<tr class="bg-tertiary border-bottom">
+                        <td colspan="6" class="p-075-1">
                             <div class="d-flex justify-between align-center">
                                 <div>
-                                    <strong style="font-size:1rem">${esc(ip)}</strong>
-                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                    <strong class="fs-1">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2 fs-085">OS: ${esc(osInfo)}</span>
                                 </div>
-                                <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
+                                <button class="btn btn-outline btn-sm" data-action="showCreateChainForTargetModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
                                     <i class="bi bi-diagram-3"></i> Chain erstellen
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="showAutoAttackModal(${scanId}, '${esc(ip)}')">
+                                <button class="btn btn-danger btn-sm" data-action="showAutoAttackModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
                                     <i class="bi bi-lightning-charge-fill"></i> Angriff starten
                                 </button>
                             </div>
@@ -379,14 +387,14 @@
                     html += ports.map(r => {
                         let svcInfo = esc(r.service || '-');
                         if (r.banner) {
-                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(r.banner)}</span>`;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span class="fs-08 color-secondary">${esc(r.banner)}</span>`;
                         } else if (r.service_product) {
                             let ver = r.service_product;
                             if (r.service_version) ver += ' ' + r.service_version;
-                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span class="fs-08 color-secondary">${esc(ver)}</span>`;
                         }
                         return `<tr>
-                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td class="pl-2">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
                         <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
                         <td>${riskBadge(r.risk_level)}</td>
                     </tr>`;
@@ -408,7 +416,7 @@
                     vempty.classList.add('hidden');
                     vtbody.innerHTML = cves.map(vl => `<tr>
                         <td>${esc(vl.ip_address || '')}:${vl.port || ''}</td>
-                        <td><a href="https://nvd.nist.gov/vuln/detail/${esc(vl.cve_id)}" target="_blank" style="color:var(--accent-blue)">${esc(vl.cve_id)}</a></td>
+                        <td><a href="https://nvd.nist.gov/vuln/detail/${esc(vl.cve_id)}" target="_blank" class="color-blue">${esc(vl.cve_id)}</a></td>
                         <td>${esc(vl.title || '-')}</td>
                         <td>${esc(vl.matched_service || '-')}${vl.matched_version ? ' ' + esc(vl.matched_version) : ''}</td>
                         <td>${severityBadge(vl.severity)}</td>
@@ -455,17 +463,17 @@
                     // Find first OS info
                     const osInfo = ports.find(p => p.os_name)?.os_name || 'Unbekannt';
 
-                    html += `<tr style="background:var(--bg-tertiary);border-bottom:1px solid var(--border-color)">
-                        <td colspan="6" style="padding:0.75rem 1rem">
+                    html += `<tr class="bg-tertiary border-bottom">
+                        <td colspan="6" class="p-075-1">
                             <div class="d-flex justify-between align-center">
                                 <div>
-                                    <strong style="font-size:1rem">${esc(ip)}</strong>
-                                    <span class="text-muted ml-2" style="font-size:0.85rem">OS: ${esc(osInfo)}</span>
+                                    <strong class="fs-1">${esc(ip)}</strong>
+                                    <span class="text-muted ml-2 fs-085">OS: ${esc(osInfo)}</span>
                                 </div>
-                                <button class="btn btn-outline btn-sm" onclick="showCreateChainForTargetModal(${scanId}, '${esc(ip)}')">
+                                <button class="btn btn-outline btn-sm" data-action="showCreateChainForTargetModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
                                     <i class="bi bi-diagram-3"></i> Chain erstellen
                                 </button>
-                                <button class="btn btn-danger btn-sm" onclick="showAutoAttackModal(${scanId}, '${esc(ip)}')">
+                                <button class="btn btn-danger btn-sm" data-action="showAutoAttackModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
                                     <i class="bi bi-lightning-charge-fill"></i> Angriff starten
                                 </button>
                             </div>
@@ -479,11 +487,11 @@
                         } else if (r.service_product) {
                             let ver = r.service_product;
                             if (r.service_version) ver += ' ' + r.service_version;
-                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span style="font-size:.8rem;color:var(--text-secondary)">${esc(ver)}</span>`;
+                            svcInfo = `<strong>${esc(r.service || '-')}</strong><br><span class="fs-08 color-secondary">${esc(ver)}</span>`;
                         }
 
                         return `<tr>
-                        <td style="padding-left:2rem">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
+                        <td class="pl-2">${esc(r.ip_address)}</td><td>${r.port}</td><td>${esc(r.protocol)}</td>
                         <td>${svcInfo}</td><td><span class="badge badge-green">offen</span></td>
                         <td>${riskBadge(r.risk_level)}</td>
                     </tr>`;
@@ -502,7 +510,7 @@
                 if (cves.length > 0) {
                     vtbody.innerHTML = cves.map(vl => `<tr>
                         <td>${esc(vl.ip_address || '')}:${vl.port || ''}</td>
-                        <td><a href="https://nvd.nist.gov/vuln/detail/${esc(vl.cve_id)}" target="_blank" style="color:var(--accent-blue)">${esc(vl.cve_id)}</a></td>
+                        <td><a href="https://nvd.nist.gov/vuln/detail/${esc(vl.cve_id)}" target="_blank" class="color-blue">${esc(vl.cve_id)}</a></td>
                         <td>${esc(vl.title || '-')}</td>
                         <td>${esc(vl.matched_service || '-')}${vl.matched_version ? ' ' + esc(vl.matched_version) : ''}</td>
                         <td>${severityBadge(vl.severity)}</td>
@@ -533,8 +541,8 @@
                     <td>#${s.id}</td><td>${esc(s.target)}</td><td>${scanTypeBadge(s.scan_type)}</td>
                     <td>${statusBadge(s.status)}</td><td>${s.result_count || 0}</td><td>${s.vuln_count || 0}</td>
                     <td>${formatDate(s.started_at)}</td>
-                    <td><div class="d-flex gap-1"><button class="btn btn-outline btn-sm" onclick="viewScanDetail(${s.id})"><i class="bi bi-eye"></i></button>
-                    <button class="btn btn-danger btn-sm" onclick="deleteScan(${s.id})"><i class="bi bi-trash"></i></button></div></td>
+                    <td><div class="d-flex gap-1"><button class="btn btn-outline btn-sm" data-action="viewScanDetail" data-arg0="${s.id}"><i class="bi bi-eye"></i></button>
+                    <button class="btn btn-danger btn-sm" data-action="deleteScan" data-arg0="${s.id}"><i class="bi bi-trash"></i></button></div></td>
                 </tr>`).join('');
             } else {
                 empty.classList.remove('hidden');
@@ -626,8 +634,8 @@
                     <td>${esc(s.cron_expression)}</td><td><span class="badge badge-${s.enabled ? 'green' : 'gray'}">${s.enabled ? 'Aktiv' : 'Inaktiv'}</span></td>
                     <td>${formatDate(s.next_run)}</td>
                     <td><div class="d-flex gap-1">
-                        <button class="btn btn-outline btn-sm" onclick="toggleSchedule(${s.id}, ${!s.enabled})"><i class="bi bi-${s.enabled ? 'pause' : 'play'}"></i></button>
-                        <button class="btn btn-danger btn-sm" onclick="deleteSchedule(${s.id})"><i class="bi bi-trash"></i></button>
+                        <button class="btn btn-outline btn-sm" data-action="toggleSchedule" data-arg0="${s.id}" data-arg1="${!s.enabled}"><i class="bi bi-${s.enabled ? 'pause' : 'play'}"></i></button>
+                        <button class="btn btn-danger btn-sm" data-action="deleteSchedule" data-arg0="${s.id}"><i class="bi bi-trash"></i></button>
                     </div></td>
                 </tr>`).join('');
             } else {
@@ -671,7 +679,7 @@
             tbody.innerHTML = users.map(u => `<tr>
                 <td>${u.id}</td><td>${esc(u.username)}</td><td>${esc((u.roles || []).join(', ') || '-')}</td>
                 <td>${formatDate(u.last_login)}</td><td>${formatDate(u.created_at)}</td>
-                <td><button class="btn btn-danger btn-sm" onclick="deleteUser(${u.id})" ${u.id === currentUser?.id ? 'disabled' : ''}><i class="bi bi-trash"></i></button></td>
+                <td><button class="btn btn-danger btn-sm" data-action="deleteUser" data-arg0="${u.id}" ${u.id === currentUser?.id ? 'disabled' : ''}><i class="bi bi-trash"></i></button></td>
             </tr>`).join('');
         } catch (e) { showToast('error', 'Fehler', e.message); }
     }
@@ -822,8 +830,8 @@
                     <td><span class="badge badge-${f.source === 'nmap-db' ? 'blue' : f.source === 'nvd-cpe' ? 'green' : f.source === 'custom' ? 'yellow' : 'gray'}">${esc(f.source || 'seed')}</span></td>
                     <td>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="showFingerprintDetail(${f.id})" title="Details"><i class="bi bi-eye"></i></button>
-                            <button class="btn btn-danger btn-sm" onclick="deleteFingerprint(${f.id})" title="Löschen"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-outline btn-sm" data-action="showFingerprintDetail" data-arg0="${f.id}" title="Details"><i class="bi bi-eye"></i></button>
+                            <button class="btn btn-danger btn-sm" data-action="deleteFingerprint" data-arg0="${f.id}" title="Löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`).join('');
@@ -1008,10 +1016,10 @@
                     <td>${srcBadge}</td>
                     <td>
                         <div class="d-flex gap-1">
-                            <button class="btn btn-outline btn-sm" onclick="showExploitDetail(${ex.id})" title="Details"><i class="bi bi-eye"></i></button>
-                            ${ex.exploit_code ? `<button class="btn btn-outline btn-sm" onclick="showExploitCode(${ex.id})" title="Code anzeigen" data-exploit-id="${ex.id}" data-edb-id="${esc(ex.exploit_db_id || '')}"><i class="bi bi-code-slash"></i></button>` : ''}
+                            <button class="btn btn-outline btn-sm" data-action="showExploitDetail" data-arg0="${ex.id}" title="Details"><i class="bi bi-eye"></i></button>
+                            ${ex.exploit_code ? `<button class="btn btn-outline btn-sm" data-action="showExploitCode" data-arg0="${ex.id}" title="Code anzeigen" data-exploit-id="${ex.id}" data-edb-id="${esc(ex.exploit_db_id || '')}"><i class="bi bi-code-slash"></i></button>` : ''}
                             ${ex.source_url ? `<a href="${esc(ex.source_url)}" target="_blank" class="btn btn-outline btn-sm" title="Referenz"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
-                            <button class="btn btn-danger btn-sm" onclick="deleteExploit(${ex.id})" title="Löschen"><i class="bi bi-trash"></i></button>
+                            <button class="btn btn-danger btn-sm" data-action="deleteExploit" data-arg0="${ex.id}" title="Löschen"><i class="bi bi-trash"></i></button>
                         </div>
                     </td>
                 </tr>`;
@@ -1217,8 +1225,8 @@
             const pag = d.pagination || {};
 
             if (cves.length > 0) {
-                tbody.innerHTML = cves.map(c => `<tr style="cursor:pointer" onclick="showCVEDetail('${esc(c.cve_id)}')">
-                    <td><code style="color:var(--accent-blue)">${esc(c.cve_id)}</code></td>
+                tbody.innerHTML = cves.map(c => `<tr style="cursor:pointer" data-action="showCVEDetail" data-arg0="${esc(c.cve_id)}">
+                    <td><code class="color-blue">${esc(c.cve_id)}</code></td>
                     <td><strong>${esc((c.title || '').substring(0, 80))}${(c.title || '').length > 80 ? '...' : ''}</strong></td>
                     <td>${severityBadge(c.severity)}</td>
                     <td>${c.cvss_score ? c.cvss_score.toFixed(1) : '-'}</td>
@@ -1252,7 +1260,7 @@
 
             document.getElementById('cveDetailContent').innerHTML = `
                 <div class="detail-grid">
-                    <div class="detail-item"><label>CVE-ID</label><span><code style="font-size:1.1rem">${esc(cve.cve_id)}</code></span></div>
+                    <div class="detail-item"><label>CVE-ID</label><span><code class="fs-11">${esc(cve.cve_id)}</code></span></div>
                     <div class="detail-item"><label>Status</label><span><span class="badge badge-${cve.state === 'PUBLISHED' ? 'green' : 'gray'}">${esc(cve.state)}</span></span></div>
                     <div class="detail-item"><label>Severity</label><span>${severityBadge(cve.severity)}</span></div>
                     <div class="detail-item"><label>CVSS Score</label><span>${cve.cvss_score ? cve.cvss_score.toFixed(1) : '-'}</span></div>
@@ -1261,7 +1269,7 @@
                     ${cve.cvss_vector ? `<div class="detail-item full-width"><label>CVSS Vector</label><span><code>${esc(cve.cvss_vector)}</code></span></div>` : ''}
                     ${cve.affected_products ? `<div class="detail-item full-width"><label>Betroffene Produkte</label><span>${esc(cve.affected_products)}</span></div>` : ''}
                     <div class="detail-item full-width"><label>Beschreibung</label><span>${esc(cve.description || 'Keine Beschreibung verfügbar')}</span></div>
-                    ${refs.length > 0 ? `<div class="detail-item full-width"><label>Referenzen</label><span>${refs.map(r => `<a href="${esc(r.url)}" target="_blank" style="display:block;margin-bottom:.25rem;color:var(--accent-blue);font-size:.85rem">${esc(r.url)}</a>`).join('')}</span></div>` : ''}
+                    ${refs.length > 0 ? `<div class="detail-item full-width"><label>Referenzen</label><span>${refs.map(r => `<a href="${esc(r.url)}" target="_blank" class="d-block mb-025 color-blue fs-085">${esc(r.url)}</a>`).join('')}</span></div>` : ''}
                 </div>
                 <div style="margin-top:1rem;display:flex;gap:.5rem">
                     <a href="https://nvd.nist.gov/vuln/detail/${esc(cve.cve_id)}" target="_blank" class="btn btn-outline btn-sm"><i class="bi bi-box-arrow-up-right"></i> NVD</a>
@@ -1366,7 +1374,7 @@
                                 </div>
                             `).join('')}
                         </div>` : ''}
-                        <p class="text-muted mt-2" style="font-size:0.85rem"><i class="bi bi-info-circle"></i> Tipp: Synchronisieren Sie die Exploit-Datenbank für aktuelle Exploits.</p>
+                        <p class="text-muted mt-2 fs-085"><i class="bi bi-info-circle"></i> Tipp: Synchronisieren Sie die Exploit-Datenbank für aktuelle Exploits.</p>
                     </div>`;
                 startBtn.style.display = 'none';
                 return;
@@ -1376,28 +1384,28 @@
             startBtn.style.display = '';
             startBtn.disabled = false;
             content.innerHTML = `
-                <div style="margin-bottom:1rem">
+                <div class="mb-1">
                     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
                         <i class="bi bi-crosshair" style="font-size:1.5rem;color:var(--accent-red)"></i>
-                        <h4 style="margin:0">Ziel: ${esc(targetIp)}</h4>
+                        <h4 class="m-0">Ziel: ${esc(targetIp)}</h4>
                     </div>
-                    <p class="text-muted" style="margin:0">Es wurden <strong>${attackable.length} angreifbare Dienste</strong> mit passenden Exploits gefunden.</p>
+                    <p class="text-muted m-0">Es wurden <strong>${attackable.length} angreifbare Dienste</strong> mit passenden Exploits gefunden.</p>
                 </div>
 
-                <h5 class="mb-1" style="color:var(--accent-red)"><i class="bi bi-exclamation-triangle-fill mr-1"></i> Angreifbare Dienste</h5>
+                <h5 class="mb-1 color-red"><i class="bi bi-exclamation-triangle-fill mr-1"></i> Angreifbare Dienste</h5>
                 <div style="border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-sm);overflow:hidden;margin-bottom:1rem">
                     ${attackable.map(s => {
                         const sevColors = { critical: 'red', high: 'orange', medium: 'yellow', low: 'blue' };
                         const topSev = (s.severities || '').split(',')[0] || 'medium';
                         return `<div style="display:flex;align-items:center;justify-content:space-between;padding:0.6rem 0.8rem;border-bottom:1px solid var(--border-color);background:rgba(239,68,68,0.05)">
-                            <div style="display:flex;align-items:center;gap:0.5rem">
+                            <div class="flex-center-gap-05">
                                 <span class="badge badge-red"><i class="bi bi-bullseye"></i></span>
                                 <div>
                                     <strong>Port ${s.port}</strong> – ${esc(s.service)} ${s.version ? '<code>' + esc(s.version) + '</code>' : ''}
                                     ${s.product ? '<br><small class="text-muted">' + esc(s.product) + '</small>' : ''}
                                 </div>
                             </div>
-                            <div style="display:flex;align-items:center;gap:0.5rem">
+                            <div class="flex-center-gap-05">
                                 <span class="badge badge-${sevColors[topSev] || 'yellow'}">${s.exploitCount} Exploit${s.exploitCount > 1 ? 's' : ''}</span>
                                 <span class="badge badge-gray">Confidence: ${s.maxConfidence}%</span>
                             </div>
@@ -1406,9 +1414,9 @@
                 </div>
 
                 ${notAttackable.length > 0 ? `
-                <details style="margin-bottom:1rem">
+                <details class="mb-1">
                     <summary class="text-muted" style="cursor:pointer;font-size:0.85rem"><i class="bi bi-shield-check mr-1"></i>${notAttackable.length} sichere Dienste (keine Exploits)</summary>
-                    <div style="margin-top:0.5rem">
+                    <div class="mt-05">
                         ${notAttackable.map(s => `
                             <div style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0;font-size:0.85rem">
                                 <span class="badge badge-green" style="font-size:0.7rem">OK</span>
@@ -1422,14 +1430,14 @@
                     <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
                         <i class="bi bi-gear"></i> <strong>Reverse Shell Konfiguration</strong>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
-                        <div class="form-group" style="margin:0">
-                            <label style="font-size:0.8rem">LHOST (Ihre IP)</label>
-                            <input type="text" id="autoAttackLHOST" class="form-control" value="${window.location.hostname}" style="font-size:0.85rem">
+                    <div class="grid-2-col gap-05">
+                        <div class="form-group m-0">
+                            <label class="fs-08">LHOST (Ihre IP)</label>
+                            <input type="text" id="autoAttackLHOST" class="form-control fs-085" value="${window.location.hostname}">
                         </div>
-                        <div class="form-group" style="margin:0">
-                            <label style="font-size:0.8rem">LPORT (Listener Port)</label>
-                            <input type="number" id="autoAttackLPORT" class="form-control" value="4444" style="font-size:0.85rem">
+                        <div class="form-group m-0">
+                            <label class="fs-08">LPORT (Listener Port)</label>
+                            <input type="number" id="autoAttackLPORT" class="form-control fs-085" value="4444">
                         </div>
                     </div>
                 </div>
@@ -1460,15 +1468,15 @@
         startBtn.innerHTML = '<span class="spinner" style="width:16px;height:16px"></span> Angriff läuft...';
         progressDiv.classList.remove('hidden');
         progressDiv.innerHTML = `
-            <div style="padding:1rem;background:var(--bg-tertiary);border-radius:var(--radius-sm);margin-top:1rem">
+            <div class="p-1 bg-tertiary radius-sm mt-1">
                 <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.5rem">
                     <span class="spinner" style="width:18px;height:18px"></span>
                     <strong id="autoAttackStatusText">Starte automatischen Angriff...</strong>
                 </div>
-                <div class="progress-bar-container" style="height:6px;background:var(--bg-secondary);border-radius:3px;overflow:hidden">
-                    <div id="autoAttackProgressBar" style="width:10%;height:100%;background:var(--accent-red);transition:width 0.5s ease;border-radius:3px"></div>
+                <div class="progress-bar-container h-6 bg-secondary radius-3 overflow-hidden">
+                    <div id="autoAttackProgressBar" class="h-100 bg-red transition-width radius-3"></div>
                 </div>
-                <p id="autoAttackProgressDetail" class="text-muted" style="font-size:0.8rem;margin-top:0.5rem">Analysiere Dienste und bereite Exploits vor...</p>
+                <p id="autoAttackProgressDetail" class="text-muted fs-08 mt-05">Analysiere Dienste und bereite Exploits vor...</p>
             </div>`;
         resultDiv.classList.add('hidden');
 
@@ -1481,7 +1489,7 @@
 
             if (d.status === 'no_exploits' || d.status === 'no_executable_exploits') {
                 progressDiv.innerHTML = `
-                    <div style="padding:1rem;background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                    <div class="p-1 bg-green-1 border-green-2 radius-sm mt-1 text-center">
                         <i class="bi bi-shield-check" style="font-size:2rem;color:var(--accent-green)"></i>
                         <h4 class="mt-1">Kein Angriff möglich</h4>
                         <p class="text-muted">${esc(d.message)}</p>
@@ -1496,7 +1504,7 @@
             currentChainExecId = execId;
 
             document.getElementById('autoAttackStatusText').textContent = `Angriff läuft... (${d.totalSteps} Schritte)`;
-            document.getElementById('autoAttackProgressBar').style.width = '30%';
+            const aapb = document.getElementById('autoAttackProgressBar'); if(aapb) aapb.style.width = '30%';
             document.getElementById('autoAttackProgressDetail').textContent = `${d.totalExploits} Exploits für ${d.attackableServices} Dienste werden getestet...`;
 
             // Poll for results
@@ -1511,7 +1519,7 @@
                     const findings = ex.findings ? (typeof ex.findings === 'string' ? JSON.parse(ex.findings) : ex.findings) : [];
                     const progress = ex.total_steps > 0 ? Math.round((ex.current_step / ex.total_steps) * 100) : 0;
 
-                    document.getElementById('autoAttackProgressBar').style.width = progress + '%';
+                    const aapb = document.getElementById('autoAttackProgressBar'); if(aapb) aapb.style.width = progress + '%';
                     document.getElementById('autoAttackStatusText').textContent = ex.status === 'completed' ? 'Angriff abgeschlossen' : ex.status === 'failed' ? 'Angriff fehlgeschlagen' : `Schritt ${ex.current_step} von ${ex.total_steps}...`;
 
                     if (results.length > 0) {
@@ -1558,28 +1566,28 @@
         if (shellFinding) {
             // SUCCESS - Shell obtained!
             html += `
-                <div style="padding:1.5rem;background:rgba(34,197,94,0.1);border:2px solid rgba(34,197,94,0.4);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                <div class="p-15 bg-green-1 border-green-4 radius-sm mt-1 text-center">
                     <i class="bi bi-terminal-fill" style="font-size:3rem;color:var(--accent-green)"></i>
                     <h3 style="color:var(--accent-green);margin:0.5rem 0">Reverse Shell erhalten!</h3>
                     <p>Zugriff auf <strong>${esc(targetIp)}</strong> über: <strong>${esc(shellFinding.title)}</strong></p>
-                    <p class="text-muted" style="font-size:0.85rem">Session ID: ${shellFinding.sessionId}</p>
-                    <button class="btn btn-primary btn-lg" onclick="hideAutoAttackModal();showShellModal('${shellFinding.sessionId}')" style="margin-top:0.5rem;font-size:1.1rem;padding:0.75rem 2rem">
+                    <p class="text-muted fs-085">Session ID: ${shellFinding.sessionId}</p>
+                    <button class="btn btn-primary btn-lg mt-05 fs-11 p-075-2" data-action="hideAutoAttackModal" data-arg0=");showShellModal('${shellFinding.sessionId}">
                         <i class="bi bi-terminal-fill mr-1"></i> Terminal öffnen
                     </button>
                 </div>`;
         } else if (execution.status === 'completed') {
             // Completed but no shell
             html += `
-                <div style="padding:1.5rem;background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                <div class="p-15 bg-yellow-1 border-yellow-3 radius-sm mt-1 text-center">
                     <i class="bi bi-shield-exclamation" style="font-size:3rem;color:var(--accent-yellow)"></i>
                     <h3 style="color:var(--accent-yellow);margin:0.5rem 0">Angriff abgeschlossen</h3>
                     <p>Kein Shell-Zugang erhalten. Die getesteten Exploits waren nicht erfolgreich.</p>
-                    <p class="text-muted" style="font-size:0.85rem">${vulnerabilities.length} Schwachstellen erkannt, ${results.length} Schritte ausgeführt.</p>
+                    <p class="text-muted fs-085">${vulnerabilities.length} Schwachstellen erkannt, ${results.length} Schritte ausgeführt.</p>
                 </div>`;
         } else {
             // Failed
             html += `
-                <div style="padding:1.5rem;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:var(--radius-sm);margin-top:1rem;text-align:center">
+                <div class="p-15 bg-red-1 border-red-3 radius-sm mt-1 text-center">
                     <i class="bi bi-x-circle" style="font-size:3rem;color:var(--accent-red)"></i>
                     <h3 style="color:var(--accent-red);margin:0.5rem 0">Angriff fehlgeschlagen</h3>
                     <p class="text-muted">${errors.length > 0 ? esc(errors[0].details) : 'Ein unerwarteter Fehler ist aufgetreten.'}</p>
@@ -1589,19 +1597,19 @@
         // Show step results summary
         if (results.length > 0) {
             html += `
-                <details style="margin-top:1rem" ${shellFinding ? '' : 'open'}>
+                <details class="mt-1" ${shellFinding ? '' : 'open'}>
                     <summary style="cursor:pointer;font-weight:600;padding:0.5rem 0"><i class="bi bi-list-check mr-1"></i> Detaillierte Ergebnisse (${results.length} Schritte)</summary>
-                    <div style="margin-top:0.5rem">
+                    <div class="mt-05">
                         ${results.map((r, i) => {
                             const icon = r.status === 'completed' ? 'bi-check-circle-fill' : 'bi-x-circle-fill';
                             const color = r.status === 'completed' ? 'var(--accent-green)' : 'var(--accent-red)';
                             const hasShell = r.findings && r.findings.some(f => f.type === 'exploit_success');
-                            return `<div style="display:flex;align-items:flex-start;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid var(--border-color)">
+                            return `<div class="flex gap-05 p-05-0 border-bottom">
                                 <i class="bi ${icon}" style="color:${color};margin-top:2px"></i>
-                                <div style="flex:1">
+                                <div class="flex-1">
                                     <strong>${esc(r.name || 'Schritt ' + (i+1))}</strong>
                                     ${hasShell ? '<span class="badge badge-green ml-1"><i class="bi bi-terminal"></i> Shell!</span>' : ''}
-                                    ${r.findings && r.findings.length > 0 ? `<div style="font-size:0.8rem;color:var(--text-secondary);margin-top:2px">${r.findings.map(f => esc(f.title)).join(' · ')}</div>` : ''}
+                                    ${r.findings && r.findings.length > 0 ? `<div class="fs-08 color-secondary mt-2px">${r.findings.map(f => esc(f.title)).join(' · ')}</div>` : ''}
                                 </div>
                             </div>`;
                         }).join('')}
@@ -1641,9 +1649,9 @@
             container.innerHTML = results.map(r => {
                 const svc = r.service || 'unknown';
                 const label = `${r.port}/${r.protocol} - ${svc}${r.service_product ? ' (' + r.service_product + ')' : ''}`;
-                return `<div class="form-group mb-1" style="display:flex;align-items:center;gap:0.5rem">
+                return `<div class="form-group mb-1 flex-center-gap-05">
                     <input type="checkbox" class="chain-service-select" value="${r.port}" data-service="${esc(svc)}" id="chk_svc_${r.port}" checked>
-                    <label for="chk_svc_${r.port}" style="margin:0;cursor:pointer">${esc(label)}</label>
+                    <label for="chk_svc_${r.port}" class="m-0 cursor-pointer">${esc(label)}</label>
                 </div>`;
             }).join('');
 
@@ -1832,8 +1840,8 @@
                                 <span class="text-muted">Tiefe: ${c.max_depth || steps.length}</span>
                             </div>
                             <div class="d-flex gap-1">
-                                <button class="btn btn-primary btn-sm" onclick="showExecuteChainModal(${c.id})"><i class="bi bi-play-fill"></i> Ausführen</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteChain(${c.id})"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-primary btn-sm" data-action="showExecuteChainModal" data-arg0="${c.id}"><i class="bi bi-play-fill"></i> Ausführen</button>
+                                <button class="btn btn-danger btn-sm" data-action="deleteChain" data-arg0="${c.id}"><i class="bi bi-trash"></i></button>
                             </div>
                         </div>
                     </div>`;
@@ -1861,7 +1869,7 @@
                     <td>${statusBadge(ex.status)}</td>
                     <td>${ex.steps_completed || 0}/${ex.steps_total || 0}</td>
                     <td>${formatDate(ex.started_at)}</td>
-                    <td><button class="btn btn-outline btn-sm" onclick="showChainExecDetail(${ex.id})"><i class="bi bi-eye"></i></button></td>
+                    <td><button class="btn btn-outline btn-sm" data-action="showChainExecDetail" data-arg0="${ex.id}"><i class="bi bi-eye"></i></button></td>
                 </tr>`).join('');
             } else {
                 tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">Keine Ausführungen</td></tr>';
@@ -1886,17 +1894,22 @@
             <div class="d-flex gap-1 align-center mb-1">
                 <span class="step-badge">${idx + 1}</span>
                 <input type="text" class="form-control" placeholder="Schrittname" data-field="name" required>
-                <select class="form-control" data-field="type" style="max-width:150px">
+                <select class="form-control max-w-150" data-field="type">
                     <option value="recon">Recon</option><option value="enum">Enumeration</option>
                     <option value="audit">Audit</option><option value="auth_test">Auth-Test</option>
                     <option value="vuln_scan">Vuln-Scan</option><option value="exploit">Exploit</option>
                 </select>
-                <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.chain-step-input').remove();renumberSteps()"><i class="bi bi-trash"></i></button>
+                <button type="button" class="btn btn-danger btn-sm" data-action="removeChainStep"><i class="bi bi-trash"></i></button>
             </div>
             <input type="text" class="form-control mb-1" placeholder="Beschreibung" data-field="description">
             <input type="text" class="form-control" placeholder="Tool (z.B. nmap, nikto)" data-field="tool">
         `;
         container.appendChild(div);
+    };
+
+    window.removeChainStep = function() {
+        this.closest('.chain-step-input').remove();
+        renumberSteps();
     };
 
     window.renumberSteps = function () {
@@ -2075,9 +2088,9 @@
                 </div>
 
                 ${shellFinding ? `
-                <div class="alert alert-success mt-2 d-flex justify-between align-center" style="background:rgba(34,197,94,0.1);border:1px solid rgba(34,197,94,0.2);padding:1rem;border-radius:var(--radius-sm)">
+                <div class="alert alert-success mt-2 d-flex justify-between align-center bg-green-1 border-green-2 p-1 radius-sm">
                     <div><strong><i class="bi bi-terminal-fill mr-1"></i> Remote Shell verfügbar!</strong><br><small>Session ID: ${shellFinding.sessionId}</small></div>
-                    <button class="btn btn-primary" onclick="showShellModal('${shellFinding.sessionId}')"><i class="bi bi-terminal"></i> Verbinden</button>
+                    <button class="btn btn-primary" data-action="showShellModal" data-arg0="${shellFinding.sessionId}"><i class="bi bi-terminal"></i> Verbinden</button>
                 </div>` : ''}
 
                 ${results.length > 0 ? `<h4 class="mt-2 mb-1">Ergebnisse</h4>
@@ -2088,7 +2101,7 @@
                             <strong>${esc(r.step || r.name || 'Schritt ' + (i+1))}</strong>
                             <span class="badge badge-${r.status === 'completed' ? 'green' : r.status === 'failed' ? 'red' : 'yellow'}">${r.status || 'pending'}</span>
                             ${r.findings && r.findings.length > 0 ?
-                                `<ul class="text-muted mt-1" style="font-size:0.85rem;padding-left:1rem">${r.findings.map(f => `<li>${esc(f.title || f.category)}</li>`).join('')}</ul>`
+                                `<ul class="text-muted mt-1 fs-085 pl-1">${r.findings.map(f => `<li>${esc(f.title || f.category)}</li>`).join('')}</ul>`
                                 : '<p class="text-muted mt-1">Keine Befunde.</p>'}
                         </div>
                     </div>
@@ -2244,8 +2257,8 @@
                         <td>${formatDate(a.generated_at)}</td>
                         <td>
                             <div class="d-flex gap-1">
-                                <button class="btn btn-outline btn-sm" onclick="showAuditDetail(${a.id})"><i class="bi bi-eye"></i> Details</button>
-                                <button class="btn btn-danger btn-sm" onclick="deleteAudit(${a.id})"><i class="bi bi-trash"></i></button>
+                                <button class="btn btn-outline btn-sm" data-action="showAuditDetail" data-arg0="${a.id}"><i class="bi bi-eye"></i> Details</button>
+                                <button class="btn btn-danger btn-sm" data-action="deleteAudit" data-arg0="${a.id}"><i class="bi bi-trash"></i></button>
                             </div>
                         </td>
                     </tr>`;
@@ -2268,7 +2281,7 @@
 
             document.getElementById('auditDetailContent').innerHTML = `
                 <div class="audit-detail-header">
-                    <div class="audit-score-circle" style="--score-color: ${scoreColor}">
+                    <div class="audit-score-circle audit-score-circle-dynamic" data-score-color="${scoreColor}">
                         <svg viewBox="0 0 120 120" width="120" height="120">
                             <circle cx="60" cy="60" r="54" fill="none" stroke="var(--bg-tertiary)" stroke-width="8"/>
                             <circle cx="60" cy="60" r="54" fill="none" stroke="${scoreColor}" stroke-width="8"
@@ -2380,6 +2393,7 @@
     // ============================================
     // Pagination Helper
     // ============================================
+    window.handlePagination = function(containerId, page) { if (typeof window[`_pagCb_${containerId}`] === "function") window[`_pagCb_${containerId}`](page); };
     function renderPagination(containerId, pag, callback) {
         const container = document.getElementById(containerId);
         if (!container || !pag || !pag.totalPages) { if (container) container.innerHTML = ''; return; }
@@ -2387,21 +2401,21 @@
 
         let html = '<div class="pagination">';
         // Previous
-        if (pag.page > 1) html += `<button class="btn btn-outline btn-sm" onclick="window._pagCb_${containerId}(${pag.page - 1})"><i class="bi bi-chevron-left"></i></button>`;
+        if (pag.page > 1) html += `<button class="btn btn-outline btn-sm" data-action="handlePagination" data-arg0="${containerId}" data-arg1="${pag.page - 1}"><i class="bi bi-chevron-left"></i></button>`;
 
         // Page numbers
         const start = Math.max(1, pag.page - 2);
         const end = Math.min(pag.totalPages, pag.page + 2);
-        if (start > 1) html += `<button class="btn btn-outline btn-sm" onclick="window._pagCb_${containerId}(1)">1</button>`;
+        if (start > 1) html += `<button class="btn btn-outline btn-sm" data-action="handlePagination" data-arg0="${containerId}" data-arg1="1">1</button>`;
         if (start > 2) html += '<span class="pagination-dots">...</span>';
         for (let i = start; i <= end; i++) {
-            html += `<button class="btn ${i === pag.page ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="window._pagCb_${containerId}(${i})">${i}</button>`;
+            html += `<button class="btn ${i === pag.page ? 'btn-primary' : 'btn-outline'} btn-sm" data-action="handlePagination" data-arg0="${containerId}" data-arg1="${i}">${i}</button>`;
         }
         if (end < pag.totalPages - 1) html += '<span class="pagination-dots">...</span>';
-        if (end < pag.totalPages) html += `<button class="btn btn-outline btn-sm" onclick="window._pagCb_${containerId}(${pag.totalPages})">${pag.totalPages}</button>`;
+        if (end < pag.totalPages) html += `<button class="btn btn-outline btn-sm" data-action="handlePagination" data-arg0="${containerId}" data-arg1="${pag.totalPages}">${pag.totalPages}</button>`;
 
         // Next
-        if (pag.page < pag.totalPages) html += `<button class="btn btn-outline btn-sm" onclick="window._pagCb_${containerId}(${pag.page + 1})"><i class="bi bi-chevron-right"></i></button>`;
+        if (pag.page < pag.totalPages) html += `<button class="btn btn-outline btn-sm" data-action="handlePagination" data-arg0="${containerId}" data-arg1="${pag.page + 1}"><i class="bi bi-chevron-right"></i></button>`;
 
         html += `</div><div class="pagination-info">Seite ${pag.page} von ${pag.totalPages} (${pag.total} Einträge)</div>`;
         container.innerHTML = html;
@@ -2717,15 +2731,15 @@
         else if (level === 'DEBUG') color = '#a3a3a3';
         else if (level === 'INFO') color = '#60a5fa';
 
-        const levelSpan = `<span style="color:${color};font-weight:bold;min-width:60px;display:inline-block">[${esc(level)}]</span>`;
-        const timeSpan = `<span style="color:#666;margin-right:8px">${ts}</span>`;
+        const levelSpan = `<span class="fw-bold min-w-60 d-inline-block log-level">[${esc(level)}]</span>`;
+        const timeSpan = `<span class="color-dim margin-r-8">${ts}</span>`;
 
         let message = esc(entry.message || '');
         if (entry.meta && Object.keys(entry.meta).length > 0) {
-            message += ` <span style="color:#888">${esc(JSON.stringify(entry.meta))}</span>`;
+            message += ` <span class="color-gray">${esc(JSON.stringify(entry.meta))}</span>`;
         }
 
-        div.innerHTML = `${timeSpan}${levelSpan} ${message}`;
+        div.innerHTML = `${timeSpan}${levelSpan} ${message}`; const ll = div.querySelector('.log-level'); if(ll) ll.style.color = color; const tse = div.querySelector('.margin-r-8'); if(tse) tse.style.color = '#666'; const mg = div.querySelector('.color-gray'); if(mg) mg.style.color = '#888';
         container.appendChild(div);
 
         // Limit lines
@@ -2738,6 +2752,82 @@
             container.scrollTop = container.scrollHeight;
         }
     }
+
+    // ============================================
+    // Centralized Event Delegation
+    // ============================================
+    function handleDataAction(el, event) {
+        const action = el.dataset.action;
+        const args = [];
+        for (let i = 0; i < 10; i++) {
+            if (el.dataset[`arg${i}`] !== undefined) {
+                let val = el.dataset[`arg${i}`];
+                if (val === 'true') val = true;
+                else if (val === 'false') val = false;
+                else if (!isNaN(val) && val !== '' && !val.includes('-')) {
+                    const n = parseFloat(val);
+                    if (!isNaN(n)) val = n;
+                }
+                args.push(val);
+            } else {
+                break;
+            }
+        }
+
+        const fn = window[action];
+        if (typeof fn === 'function') {
+            fn.apply(el, args);
+        } else {
+            console.warn(`Action not found: ${action}`);
+        }
+    }
+
+    document.addEventListener('click', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target || (target.dataset.event && target.dataset.event !== 'click')) return;
+        handleDataAction(target, e);
+    });
+
+    document.addEventListener('submit', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target || target.dataset.event !== 'submit') return;
+        e.preventDefault();
+        handleDataAction(target, e);
+    });
+
+    document.addEventListener('change', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target || target.dataset.event !== 'change') return;
+        handleDataAction(target, e);
+    });
+
+    document.addEventListener('input', (e) => {
+        const target = e.target.closest('[data-action]');
+        if (!target || target.dataset.event !== 'input') return;
+        handleDataAction(target, e);
+    });
+
+    // Expose internal functions to window for centralized event delegation
+    window.loadHistory = loadHistory;
+    window.loadVulnerabilities = loadVulnerabilities;
+    window.loadDashboard = loadDashboard;
+    window.loadScanResults = loadScanResults;
+    window.loadSchedules = loadSchedules;
+    window.loadUsers = loadUsers;
+    window.loadNotifications = loadNotifications;
+    window.loadFingerprintStats = loadFingerprintStats;
+    window.loadFingerprints = loadFingerprints;
+    window.loadExploitStats = loadExploitStats;
+    window.loadExploits = loadExploits;
+    window.loadCVEStats = loadCVEStats;
+    window.loadCVEs = loadCVEs;
+    window.loadGHDBStats = loadGHDBStats;
+    window.loadGHDB = loadGHDB;
+    window.loadAttackChains = loadAttackChains;
+    window.loadChainStats = loadChainStats;
+    window.loadChainExecutions = loadChainExecutions;
+    window.loadAuditHistory = loadAuditHistory;
+    window.loadDbUpdateHistory = loadDbUpdateHistory;
 
     init();
 })();
