@@ -831,7 +831,8 @@ except:
                                 if (fs.existsSync(bundlePath)) {
                                     envVars.push('BUNDLE_PATH="' + bundlePath + '"');
                                 }
-                                cmd = 'cd "' + msfRoot + '" && ' + envVars.join(' ') + ' ./msfconsole -q -r "' + rcFile + '"';
+                                // Use bundle exec to prevent gem conflicts (e.g. stringio)
+                                cmd = 'cd "' + msfRoot + '" && ' + envVars.join(' ') + ' bundle exec ./msfconsole -q -r "' + rcFile + '"';
                             } else {
                                 // Fallback: try system-installed msfconsole
                                 cmd = 'msfconsole -q -r "' + rcFile + '"';
