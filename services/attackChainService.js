@@ -824,8 +824,7 @@ except:
                                 const bundlePath = path.join(msfRoot, 'vendor', 'bundle');
                                 const envVars = [
                                     'BUNDLE_GEMFILE="' + gemfilePath + '"',
-                                    'RAILS_ENV=production',
-                                    'BUNDLE_DISABLE_SHARED_GEMS=1'
+                                    'RAILS_ENV=production'
                                 ];
                                 // Only set BUNDLE_PATH if vendor/bundle exists (local install mode)
                                 if (fs.existsSync(bundlePath)) {
@@ -876,9 +875,10 @@ except:
                                     logger.warn(`Exploit ${exploit.id} execution error/timeout: ${error.message}`);
                                     if (stdout) logger.info(`Exploit stdout: ${stdout.trim()}`);
                                     if (stderr) logger.warn(`Exploit stderr: ${stderr.trim()}`);
-                                } else if (stderr && stderr.length > 0) {
-                                     // Log stderr even on success, as it might contain important warnings (like stringio)
-                                     logger.info(`Exploit executed with warnings/stderr: ${stderr.trim()}`);
+                                } else {
+                                     // Log stdout and stderr on success for debugging purposes
+                                     if (stdout && stdout.length > 0) logger.info(`Exploit stdout: ${stdout.trim()}`);
+                                     if (stderr && stderr.length > 0) logger.info(`Exploit executed with warnings/stderr: ${stderr.trim()}`);
                                 }
                                 resolve();
                             });
