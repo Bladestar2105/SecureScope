@@ -821,7 +821,7 @@ except:
 
                         // Run with timeout
                         await new Promise((resolve, reject) => {
-                            exec(cmd, { timeout: 30000 }, (error, stdout, stderr) => {
+                            exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
                                 if (error) {
                                     logger.warn(`Exploit ${exploit.id} execution error/timeout: ${error.message}`);
                                 }
@@ -854,6 +854,7 @@ except:
                             } else {
                                 // Cleanup unused session
                                 ShellService.killSession(sessionId);
+                                await new Promise(r => setTimeout(r, 2000)); // Ensure port release
                                 findings.push({
                                     type: 'exploit_attempt',
                                     category: 'Exploit fehlgeschlagen',
