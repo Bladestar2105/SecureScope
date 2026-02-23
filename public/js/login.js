@@ -48,12 +48,18 @@
                 <div class="toast-title">${title}</div>
                 <div class="toast-message">${message}</div>
             </div>
-            <button class="toast-close" onclick="this.parentElement.classList.add('removing'); setTimeout(() => this.parentElement.remove(), 300);">
+            <button class="toast-close" aria-label="Benachrichtigung schließen">
                 <i class="bi bi-x"></i>
             </button>
         `;
 
         container.appendChild(toast);
+
+        const closeBtn = toast.querySelector('.toast-close');
+        closeBtn.addEventListener('click', () => {
+            toast.classList.add('removing');
+            setTimeout(() => toast.remove(), 300);
+        });
 
         // Auto-remove after 5 seconds
         setTimeout(() => {
