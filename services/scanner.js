@@ -90,14 +90,25 @@ class ScannerService extends EventEmitter {
         for (const part of portParts) {
             const trimmed = part.trim();
             if (trimmed.includes('-')) {
-                const [start, end] = trimmed.split('-').map(Number);
-                if (isNaN(start) || isNaN(end) || start < 1 || end > 65535 || start > end) {
-                    return { valid: false, error: `Ungültiger Port-Bereich: ${trimmed}` };
+                // Range validation: strictly digits-digits
+                if (!/^\d+-\d+$/.test(trimmed)) {
+                    return { valid: false, error: `Ungültiges Port-Bereichs-Format: ${trimmed}` };
+                }
+                const [startStr, endStr] = trimmed.split('-');
+                const start = parseInt(startStr, 10);
+                const end = parseInt(endStr, 10);
+
+                if (start < 1 || end > 65535 || start > end) {
+                    return { valid: false, error: `Ungültiger Port-Bereich (1-65535, Start <= Ende): ${trimmed}` };
                 }
             } else {
-                const port = parseInt(trimmed);
-                if (isNaN(port) || port < 1 || port > 65535) {
-                    return { valid: false, error: `Ungültige Port-Nummer: ${trimmed}` };
+                // Single port validation: strictly digits
+                if (!/^\d+$/.test(trimmed)) {
+                    return { valid: false, error: `Ungültiges Port-Format: ${trimmed}` };
+                }
+                const port = parseInt(trimmed, 10);
+                if (port < 1 || port > 65535) {
+                    return { valid: false, error: `Ungültige Port-Nummer (1-65535): ${trimmed}` };
                 }
             }
         }
