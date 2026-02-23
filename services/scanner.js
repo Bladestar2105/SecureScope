@@ -8,13 +8,14 @@ const CVEService = require('./cveService');
 const { EventEmitter } = require('events');
 const IPCIDR_MODULE = require('ip-cidr');
 const IPCIDR = IPCIDR_MODULE.default || IPCIDR_MODULE;
+const scannerConfig = require('../config/scanner');
 
 class ScannerService extends EventEmitter {
     constructor() {
         super();
         this.activeScans = new Map(); // scanId -> { process, aborted }
-        this.MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_SCANS) || 3;
-        this.SCAN_TIMEOUT = parseInt(process.env.SCAN_TIMEOUT) || 600000; // 10 min default
+        this.MAX_CONCURRENT = parseInt(process.env.MAX_CONCURRENT_SCANS) || scannerConfig.DEFAULT_MAX_CONCURRENT;
+        this.SCAN_TIMEOUT = parseInt(process.env.SCAN_TIMEOUT) || scannerConfig.DEFAULT_SCAN_TIMEOUT;
     }
 
     // Initialize scanner service (must be called after DB init)
@@ -33,12 +34,12 @@ class ScannerService extends EventEmitter {
 
     // Top 100 ports for quick scan
     static get TOP_100_PORTS() {
-        return '7,9,13,21,22,23,25,26,37,53,79,80,81,88,106,110,111,113,119,135,139,143,144,179,199,389,427,443,444,445,465,513,514,515,543,544,548,554,587,631,646,873,990,993,995,1025,1026,1027,1028,1029,1110,1433,1720,1723,1755,1900,2000,2001,2049,2121,2717,3000,3128,3306,3389,3986,4899,5000,5009,5051,5060,5101,5190,5357,5432,5631,5666,5800,5900,6000,6001,6646,7070,8000,8008,8009,8080,8081,8443,8888,9100,9999,10000,32768,49152,49153,49154,49155,49156,49157';
+        return scannerConfig.TOP_100_PORTS;
     }
 
     // Top 1000 ports for standard scan
     static get TOP_1000_PORTS() {
-        return '1-1024,1025-1030,1080,1099,1110,1194,1433,1434,1521,1604,1723,1755,1900,2000,2001,2049,2082,2083,2086,2087,2095,2096,2121,2181,2222,2375,2376,2717,3000,3128,3268,3269,3306,3389,3690,3986,4443,4444,4567,4711,4712,4848,4899,5000,5001,5009,5050,5051,5060,5061,5101,5190,5222,5223,5357,5432,5555,5601,5631,5632,5666,5672,5800,5900,5901,5984,5985,5986,6000,6001,6379,6443,6646,6660-6669,7000,7001,7002,7070,7071,7077,7078,7474,7547,7548,8000,8001,8008,8009,8010,8020,8042,8060,8069,8080,8081,8082,8083,8088,8090,8091,8139,8140,8161,8200,8222,8333,8334,8443,8444,8500,8649,8834,8880,8888,8889,8983,9000,9001,9002,9042,9043,9060,9080,9090,9091,9100,9200,9300,9418,9443,9876,9990,9999,10000,10001,10050,10051,10250,10443,11211,11300,12345,13579,14147,16010,16080,18080,19888,20000,20547,21025,22222,23023,25565,27017,27018,28017,30000,32400,32768,33060,37777,40000,44443,47001,48899,49152-49157,50000,50070,54321,55553,55555,60000,60010,60030,61616,63790,64738';
+        return scannerConfig.TOP_1000_PORTS;
     }
 
     // Validate IP address
@@ -109,7 +110,7 @@ class ScannerService extends EventEmitter {
         switch (scanType) {
             case 'quick': return ScannerService.TOP_100_PORTS;
             case 'standard': return ScannerService.TOP_1000_PORTS;
-            case 'full': return '1-65535';
+            case 'full': return scannerConfig.FULL_PORT_RANGE;
             case 'custom': return customPorts;
             default: return ScannerService.TOP_100_PORTS;
         }
