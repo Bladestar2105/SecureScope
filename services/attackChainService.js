@@ -869,11 +869,16 @@ except:
                             throw new Error(`Unsupported language: ${exploitData.language}`);
                         }
 
-                        // Run with timeout
+                        // Run with timeout (increased to 10 minutes for slow environments)
                         await new Promise((resolve, reject) => {
-                            exec(cmd, { timeout: 180000 }, (error, stdout, stderr) => {
+                            exec(cmd, { timeout: 600000 }, (error, stdout, stderr) => {
                                 if (error) {
                                     logger.warn(`Exploit ${exploit.id} execution error/timeout: ${error.message}`);
+                                    if (stdout) logger.info(`Exploit stdout: ${stdout.trim()}`);
+                                    if (stderr) logger.warn(`Exploit stderr: ${stderr.trim()}`);
+                                } else if (stderr && stderr.length > 0) {
+                                     // Log stderr even on success, as it might contain important warnings (like stringio)
+                                     logger.info(`Exploit executed with warnings/stderr: ${stderr.trim()}`);
                                 }
                                 resolve();
                             });
