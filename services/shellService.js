@@ -1,4 +1,4 @@
-const { spawn } = require('child_process');
+const net = require('net');
 const { v4: uuidv4 } = require('uuid');
 const EventEmitter = require('events');
 const logger = require('./logger');
@@ -7,7 +7,7 @@ const websocketService = require('./websocketService');
 class ShellService extends EventEmitter {
     constructor() {
         super();
-        this.sessions = new Map(); // sessionId -> { process, port, connected: boolean, createdAt: Date }
+        this.sessions = new Map(); // sessionId -> { server, socket, port, connected: boolean, createdAt: Date, buffer: [] }
 
         // Register WebSocket handler
         websocketService.registerHandler(/^\/api\/shell\/([a-f0-9-]+)$/, (ws, req, match) => {
@@ -16,55 +16,71 @@ class ShellService extends EventEmitter {
     }
 
     /**
-     * Starts a netcat listener on the specified port.
+     * Starts a TCP listener on the specified port using Node.js net module.
      * @param {number} port - The port to listen on.
      * @returns {string} - The session ID.
      */
     startListener(port) {
         const sessionId = uuidv4();
-        // Use -l (listen), -v (verbose), -n (numeric only), -p (port)
-        // Note: Check if netcat-openbsd or netcat-traditional usage.
-        // Dockerfile installs netcat-openbsd.
-        // Usage: nc -l -p 4444 -v -n
-        const nc = spawn('nc', ['-l', '-v', '-n', '-p', port]);
 
         const session = {
             id: sessionId,
-            process: nc,
+            server: null,
+            socket: null,
             port: port,
             connected: false,
             createdAt: new Date(),
             buffer: [] // Buffer output until WS connects
         };
 
-        this.sessions.set(sessionId, session);
-        logger.info(`Started shell listener ${sessionId} on port ${port}`);
+        const server = net.createServer((socket) => {
+            logger.info(`Connection received on port ${port} for session ${sessionId}`);
 
-        // Handle output
-        const handleOutput = (data, source) => {
-            const text = data.toString();
-
-            // Check for connection
-            // netcat-openbsd verbose output on stderr: "Connection from 192.168.1.5 53214 received!" or similar
-            if (!session.connected && (text.includes('Connection from') || text.includes('connect to'))) {
-                session.connected = true;
-                logger.info(`Shell session ${sessionId} connected!`);
-                this.emit('connection', sessionId);
+            // Only accept one connection per listener (standard for reverse shells)
+            if (session.socket) {
+                logger.warn(`Rejected additional connection on port ${port}`);
+                socket.end();
+                return;
             }
 
-            // Buffer or send to WS
-            if (session.ws && session.ws.readyState === 1) { // OPEN
-                session.ws.send(text);
-            } else {
-                session.buffer.push(text);
-            }
-        };
+            session.socket = socket;
+            session.connected = true;
+            this.emit('connection', sessionId);
 
-        nc.stdout.on('data', (data) => handleOutput(data, 'stdout'));
-        nc.stderr.on('data', (data) => handleOutput(data, 'stderr'));
+            // Handle incoming data from the shell
+            socket.on('data', (data) => {
+                const text = data.toString('utf8'); // Convert buffer to string
 
-        nc.on('close', (code) => {
-            logger.info(`Shell session ${sessionId} closed with code ${code}`);
+                // Buffer or send to WS
+                if (session.ws && session.ws.readyState === 1) { // OPEN
+                    session.ws.send(text);
+                } else {
+                    session.buffer.push(text);
+                }
+            });
+
+            socket.on('error', (err) => {
+                logger.error(`Socket error on session ${sessionId}:`, err);
+                this.killSession(sessionId);
+            });
+
+            socket.on('close', () => {
+                logger.info(`Socket closed for session ${sessionId}`);
+                session.socket = null;
+                session.connected = false;
+                // We keep the listener open? No, usually reverse shell is one-shot.
+                // But let's keep it open in case of reconnection attempts or multiple stages?
+                // For now, let's keep the listener active until explicitly killed by AttackChainService.
+            });
+        });
+
+        server.on('error', (err) => {
+            logger.error(`Listener error on port ${port}:`, err);
+            this.sessions.delete(sessionId);
+        });
+
+        server.on('close', () => {
+            logger.info(`Listener closed on port ${port}`);
             if (session.ws) {
                 session.ws.close();
             }
@@ -72,10 +88,16 @@ class ShellService extends EventEmitter {
             this.emit('close', sessionId);
         });
 
-        nc.on('error', (err) => {
-            logger.error(`Shell session ${sessionId} error:`, err);
-            this.sessions.delete(sessionId);
-        });
+        try {
+            server.listen(port, '0.0.0.0', () => {
+                logger.info(`Started shell listener ${sessionId} on port ${port}`);
+            });
+            session.server = server;
+            this.sessions.set(sessionId, session);
+        } catch (err) {
+            logger.error(`Failed to start listener on port ${port}:`, err);
+            return null;
+        }
 
         return sessionId;
     }
@@ -102,9 +124,9 @@ class ShellService extends EventEmitter {
         }
 
         ws.on('message', (message) => {
-            if (session.process && !session.process.killed) {
+            if (session.socket && !session.socket.destroyed) {
                 try {
-                    session.process.stdin.write(message);
+                    session.socket.write(message);
                 } catch (e) {
                     logger.error(`Error writing to shell ${sessionId}:`, e);
                 }
@@ -117,12 +139,17 @@ class ShellService extends EventEmitter {
     }
 
     /**
-     * Kills a session.
+     * Kills a session (closes listener and socket).
      */
     killSession(sessionId) {
         const session = this.sessions.get(sessionId);
         if (session) {
-            if (session.process) session.process.kill();
+            if (session.socket) {
+                session.socket.destroy();
+            }
+            if (session.server) {
+                session.server.close();
+            }
             this.sessions.delete(sessionId);
         }
     }

