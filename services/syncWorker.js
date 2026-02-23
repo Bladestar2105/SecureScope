@@ -834,7 +834,7 @@ async function syncMetasploit(userId) {
         let needsBundleInstall = true;
         const vendorBundlePath = path.join(MSF_DIR, 'vendor', 'bundle');
         try {
-            const checkEnv = { ...process.env, BUNDLE_GEMFILE: path.join(MSF_DIR, 'Gemfile'), RAILS_ENV: 'production' };
+            const checkEnv = { ...process.env, BUNDLE_GEMFILE: path.join(MSF_DIR, 'Gemfile'), RAILS_ENV: 'production', BUNDLE_DISABLE_SHARED_GEMS: '1' };
             if (fs.existsSync(vendorBundlePath)) {
                 checkEnv.BUNDLE_PATH = vendorBundlePath;
             }
@@ -854,7 +854,7 @@ async function syncMetasploit(userId) {
             try {
                 emit('download', 28, 'Installiere Gems (ohne development/test/coverage). Dies kann einige Minuten dauern...');
                 execSafe(
-                    `cd "${MSF_DIR}" && bundle config set --local without 'development test coverage' && bundle config set --local path 'vendor/bundle' && bundle install --jobs 4`,
+                    `cd "${MSF_DIR}" && bundle config set --local without 'development test coverage' && bundle config set --local path 'vendor/bundle' && bundle config set --local disable_shared_gems true && bundle install --jobs 4`,
                     { maxBuffer: 50 * 1024 * 1024, timeout: 900000 }
                 );
                 emit('download', 38, 'Ruby-Abhängigkeiten erfolgreich installiert.');
