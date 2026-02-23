@@ -54,6 +54,8 @@ RUN apt-get update && apt-get install -y \
     libxslt1-dev \
     libssl-dev \
     zlib1g-dev \
+    libyaml-dev \
+    libffi-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko \
     && gem install bundler -v 2.5.22 --no-document
