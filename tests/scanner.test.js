@@ -176,5 +176,29 @@ describe('ScannerService Static Methods', () => {
             expect(scannerService.constructor.validatePorts('1-70000').valid).toBe(false);
             expect(scannerService.constructor.validatePorts('80-abc').valid).toBe(false);
         });
+
+        test('should reject command injection attempts', () => {
+            const result = scannerService.constructor.validatePorts('80; whoami');
+            expect(result.valid).toBe(false);
+            expect(result.error).toMatch(/Ungültiges Port-Format/);
+        });
+
+        test('should reject garbage appended to numbers', () => {
+            const result = scannerService.constructor.validatePorts('80garbage');
+            expect(result.valid).toBe(false);
+            expect(result.error).toMatch(/Ungültiges Port-Format/);
+        });
+
+        test('should reject space separated numbers (not commas)', () => {
+            const result = scannerService.constructor.validatePorts('80 81');
+            expect(result.valid).toBe(false);
+            expect(result.error).toMatch(/Ungültiges Port-Format/);
+        });
+
+        test('should reject range with garbage', () => {
+            const result = scannerService.constructor.validatePorts('80-90garbage');
+            expect(result.valid).toBe(false);
+            expect(result.error).toMatch(/Ungültiges Port-Bereichs-Format/);
+        });
     });
 });
