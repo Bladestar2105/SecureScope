@@ -10,6 +10,53 @@ const IPCIDR_MODULE = require('ip-cidr');
 const IPCIDR = IPCIDR_MODULE.default || IPCIDR_MODULE;
 const scannerConfig = require('../config/scanner');
 
+/**
+ * SQL Queries for ScannerService
+ */
+const QUERIES = {
+    RESET_ZOMBIE_SCANS: "UPDATE scans SET status = 'failed', error_message = 'System restart (Zombie scan)', completed_at = CURRENT_TIMESTAMP WHERE status = 'running'",
+    CREATE_SCAN: 'INSERT INTO scans (user_id, scan_type, target, port_range, status) VALUES (?, ?, ?, ?, ?)',
+    UPDATE_SCAN_PROGRESS: 'UPDATE scans SET progress = ? WHERE id = ?',
+    ABORT_SCAN: 'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+    FAIL_SCAN: 'UPDATE scans SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+    INSERT_SCAN_RESULT: `
+        INSERT INTO scan_results (scan_id, ip_address, port, protocol, service, state, risk_level,
+            service_product, service_version, service_extra, service_cpe, banner, os_name, os_accuracy)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `,
+    COMPLETE_SCAN: 'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?',
+    GET_DASHBOARD_STATS: `
+        SELECT
+            (SELECT COUNT(*) FROM scans WHERE user_id = ?) as totalScans,
+            (SELECT COUNT(*) FROM scans WHERE user_id = ? AND status = 'completed') as completedScans,
+            (SELECT COUNT(*) FROM scan_results sr JOIN scans s ON sr.scan_id = s.id WHERE s.user_id = ? AND sr.risk_level = 'critical') as criticalPorts,
+            (SELECT COUNT(*) FROM scan_vulnerabilities sv JOIN scans s ON sv.scan_id = s.id WHERE s.user_id = ?) as totalVulnerabilities
+    `,
+    GET_ACTIVE_SCAN: "SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1",
+    GET_RECENT_SCANS: `
+        SELECT s.*,
+               COUNT(DISTINCT sr.id) as result_count,
+               COUNT(DISTINCT sv.id) as vuln_count
+        FROM (
+            SELECT * FROM scans
+            WHERE user_id = ?
+            ORDER BY started_at DESC LIMIT 10
+        ) s
+        LEFT JOIN scan_results sr ON sr.scan_id = s.id
+        LEFT JOIN scan_vulnerabilities sv ON sv.scan_id = s.id
+        GROUP BY s.id
+        ORDER BY s.started_at DESC
+    `,
+    GET_SCAN_STATUS_SIMPLE: 'SELECT status FROM scans WHERE id = ?',
+    MANUAL_ABORT_SCAN: "UPDATE scans SET status = 'aborted', completed_at = CURRENT_TIMESTAMP WHERE id = ?",
+    GET_SCAN_STATUS: 'SELECT id, user_id, scan_type, target, port_range, status, progress, started_at, completed_at, error_message FROM scans WHERE id = ?',
+    GET_SCAN_RESULTS_PAGINATED: 'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port LIMIT ? OFFSET ?',
+    GET_SCAN_RESULTS_COUNT: 'SELECT COUNT(*) as count FROM scan_results WHERE scan_id = ?',
+    GET_ALL_SCAN_RESULTS: 'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port',
+    GET_SCAN_HISTORY_BASE: 'SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count FROM scans s LEFT JOIN scan_results sr ON s.id = sr.scan_id LEFT JOIN scan_vulnerabilities sv ON s.id = sv.scan_id WHERE s.user_id = ?',
+    GET_SCAN_RESULTS_FOR_COMPARE: 'SELECT ip_address, port, protocol, service, state, risk_level, service_product, service_version, banner FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port'
+};
+
 class ScannerService extends EventEmitter {
     constructor() {
         super();
@@ -23,7 +70,7 @@ class ScannerService extends EventEmitter {
         // Reset zombie scans on startup
         try {
             const db = getDatabase();
-            const res = db.prepare("UPDATE scans SET status = 'failed', error_message = 'System restart (Zombie scan)', completed_at = CURRENT_TIMESTAMP WHERE status = 'running'").run();
+            const res = db.prepare(QUERIES.RESET_ZOMBIE_SCANS).run();
             if (res.changes > 0) {
                 logger.info(`Reset ${res.changes} zombie scans to failed state.`);
             }
@@ -195,9 +242,7 @@ class ScannerService extends EventEmitter {
         const effectiveScanType = stealthMode ? `${scanType}_stealth` : scanType;
 
         // Create scan record in database
-        const result = db.prepare(
-            'INSERT INTO scans (user_id, scan_type, target, port_range, status) VALUES (?, ?, ?, ?, ?)'
-        ).run(userId, effectiveScanType, target, portRange, 'running');
+        const result = db.prepare(QUERIES.CREATE_SCAN).run(userId, effectiveScanType, target, portRange, 'running');
 
         const scanId = result.lastInsertRowid;
 
@@ -285,22 +330,21 @@ class ScannerService extends EventEmitter {
             logger.info(`Scan ${scanId}: Running nmap ${nmapArgs.join(' ')} (stealth=${stealthMode})`);
 
             // Update progress - scanning phase
-            db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(10, scanId);
+            db.prepare(QUERIES.UPDATE_SCAN_PROGRESS).run(10, scanId);
             this.emit('scanProgress', { scanId, progress: 10, phase: 'scanning', message: 'Nmap-Scan mit Service-Detection läuft...' });
 
             // Execute Nmap
             const nmapResult = await this._runNmap(nmapArgs, scanControl, scanId);
 
             if (scanControl.aborted) {
-                db.prepare('UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?')
-                    .run('aborted', scanId);
+                db.prepare(QUERIES.ABORT_SCAN).run('aborted', scanId);
                 this.emit('scanComplete', { scanId, status: 'aborted', resultCount: 0 });
                 logger.info(`Scan ${scanId} was aborted`);
                 return;
             }
 
             // Update progress - parsing phase
-            db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(60, scanId);
+            db.prepare(QUERIES.UPDATE_SCAN_PROGRESS).run(60, scanId);
             this.emit('scanProgress', { scanId, progress: 60, phase: 'parsing', message: 'Ergebnisse werden verarbeitet...' });
 
             // Parse Nmap XML output
@@ -312,9 +356,7 @@ class ScannerService extends EventEmitter {
 
         } catch (err) {
             logger.error(`Scan ${scanId} failed:`, err);
-            db.prepare(
-                'UPDATE scans SET status = ?, error_message = ?, completed_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).run('failed', err.message, scanId);
+            db.prepare(QUERIES.FAIL_SCAN).run('failed', err.message, scanId);
             this.emit('scanError', { scanId, error: err.message });
         } finally {
             clearTimeout(timeoutHandle);
@@ -326,11 +368,7 @@ class ScannerService extends EventEmitter {
     async _processResults(scanId, results, db) {
         // Save results to database
         if (results.length > 0) {
-            const insertStmt = db.prepare(`
-                INSERT INTO scan_results (scan_id, ip_address, port, protocol, service, state, risk_level,
-                    service_product, service_version, service_extra, service_cpe, banner, os_name, os_accuracy)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `);
+            const insertStmt = db.prepare(QUERIES.INSERT_SCAN_RESULT);
 
             const insertMany = db.transaction((items) => {
                 for (const item of items) {
@@ -347,7 +385,7 @@ class ScannerService extends EventEmitter {
         }
 
         // Update progress - analysis phase
-        db.prepare('UPDATE scans SET progress = ? WHERE id = ?').run(80, scanId);
+        db.prepare(QUERIES.UPDATE_SCAN_PROGRESS).run(80, scanId);
         this.emit('scanProgress', { scanId, progress: 80, phase: 'analysis', message: 'Sicherheitsanalyse (CVE + Exploit Matching)...' });
 
         // Post-scan analysis pipeline
@@ -373,9 +411,7 @@ class ScannerService extends EventEmitter {
         }
 
         // Mark scan as completed
-        db.prepare(
-            'UPDATE scans SET status = ?, progress = 100, completed_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).run('completed', scanId);
+        db.prepare(QUERIES.COMPLETE_SCAN).run('completed', scanId);
 
         const exploitSummary = ExploitService.getScanExploitSummary(scanId);
 
@@ -486,34 +522,15 @@ class ScannerService extends EventEmitter {
         const db = getDatabase();
 
         // Single query for counts
-        const stats = db.prepare(`
-            SELECT
-                (SELECT COUNT(*) FROM scans WHERE user_id = ?) as totalScans,
-                (SELECT COUNT(*) FROM scans WHERE user_id = ? AND status = 'completed') as completedScans,
-                (SELECT COUNT(*) FROM scan_results sr JOIN scans s ON sr.scan_id = s.id WHERE s.user_id = ? AND sr.risk_level = 'critical') as criticalPorts,
-                (SELECT COUNT(*) FROM scan_vulnerabilities sv JOIN scans s ON sv.scan_id = s.id WHERE s.user_id = ?) as totalVulnerabilities
-        `).get(userId, userId, userId, userId);
+        const stats = db.prepare(QUERIES.GET_DASHBOARD_STATS).get(userId, userId, userId, userId);
 
         // Active scans
         const activeScansCount = this.getActiveScanCount();
-        const activeScanRow = db.prepare("SELECT * FROM scans WHERE user_id = ? AND status = 'running' ORDER BY started_at DESC LIMIT 1").get(userId);
+        const activeScanRow = db.prepare(QUERIES.GET_ACTIVE_SCAN).get(userId);
 
         // Recent scans with result counts and vuln counts
         // Optimized: Use JOIN and GROUP BY with a derived table to avoid correlated subqueries and maintain performance
-        const recentScans = db.prepare(`
-            SELECT s.*,
-                   COUNT(DISTINCT sr.id) as result_count,
-                   COUNT(DISTINCT sv.id) as vuln_count
-            FROM (
-                SELECT * FROM scans
-                WHERE user_id = ?
-                ORDER BY started_at DESC LIMIT 10
-            ) s
-            LEFT JOIN scan_results sr ON sr.scan_id = s.id
-            LEFT JOIN scan_vulnerabilities sv ON sv.scan_id = s.id
-            GROUP BY s.id
-            ORDER BY s.started_at DESC
-        `).all(userId);
+        const recentScans = db.prepare(QUERIES.GET_RECENT_SCANS).all(userId);
 
         return {
             totalScans: stats.totalScans,
@@ -549,9 +566,9 @@ class ScannerService extends EventEmitter {
         } else {
             // Handle zombie scans (process gone but DB says running)
             const db = getDatabase();
-            const scan = db.prepare('SELECT status FROM scans WHERE id = ?').get(scanId);
+            const scan = db.prepare(QUERIES.GET_SCAN_STATUS_SIMPLE).get(scanId);
             if (scan && scan.status === 'running') {
-                db.prepare("UPDATE scans SET status = 'aborted', completed_at = CURRENT_TIMESTAMP WHERE id = ?").run(scanId);
+                db.prepare(QUERIES.MANUAL_ABORT_SCAN).run(scanId);
                 logger.info(`Zombie scan ${scanId} manually aborted`);
                 logger.audit('SCAN_ABORTED_MANUAL', { scanId });
                 return true;
@@ -563,9 +580,7 @@ class ScannerService extends EventEmitter {
     // Get scan status
     getScanStatus(scanId) {
         const db = getDatabase();
-        const scan = db.prepare(
-            'SELECT id, user_id, scan_type, target, port_range, status, progress, started_at, completed_at, error_message FROM scans WHERE id = ?'
-        ).get(scanId);
+        const scan = db.prepare(QUERIES.GET_SCAN_STATUS).get(scanId);
         return scan || null;
     }
 
@@ -574,13 +589,9 @@ class ScannerService extends EventEmitter {
         const db = getDatabase();
         const offset = (page - 1) * limit;
 
-        const results = db.prepare(
-            'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port LIMIT ? OFFSET ?'
-        ).all(scanId, limit, offset);
+        const results = db.prepare(QUERIES.GET_SCAN_RESULTS_PAGINATED).all(scanId, limit, offset);
 
-        const total = db.prepare(
-            'SELECT COUNT(*) as count FROM scan_results WHERE scan_id = ?'
-        ).get(scanId);
+        const total = db.prepare(QUERIES.GET_SCAN_RESULTS_COUNT).get(scanId);
 
         return {
             results,
@@ -595,15 +606,13 @@ class ScannerService extends EventEmitter {
     // Get all results for a scan (for export)
     getAllScanResults(scanId) {
         const db = getDatabase();
-        return db.prepare(
-            'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port'
-        ).all(scanId);
+        return db.prepare(QUERIES.GET_ALL_SCAN_RESULTS).all(scanId);
     }
 
     // Get scan history with filters
     getScanHistory(userId, filters = {}) {
         const db = getDatabase();
-        let query = 'SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count FROM scans s LEFT JOIN scan_results sr ON s.id = sr.scan_id LEFT JOIN scan_vulnerabilities sv ON s.id = sv.scan_id WHERE s.user_id = ?';
+        let query = QUERIES.GET_SCAN_HISTORY_BASE;
         const params = [userId];
 
         if (filters.dateFrom) { query += ' AND s.started_at >= ?'; params.push(filters.dateFrom); }
@@ -640,13 +649,9 @@ class ScannerService extends EventEmitter {
     compareScans(scanId1, scanId2) {
         const db = getDatabase();
 
-        const results1 = db.prepare(
-            'SELECT ip_address, port, protocol, service, state, risk_level, service_product, service_version, banner FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port'
-        ).all(scanId1);
+        const results1 = db.prepare(QUERIES.GET_SCAN_RESULTS_FOR_COMPARE).all(scanId1);
 
-        const results2 = db.prepare(
-            'SELECT ip_address, port, protocol, service, state, risk_level, service_product, service_version, banner FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port'
-        ).all(scanId2);
+        const results2 = db.prepare(QUERIES.GET_SCAN_RESULTS_FOR_COMPARE).all(scanId2);
 
         const scan1 = this.getScanStatus(scanId1);
         const scan2 = this.getScanStatus(scanId2);
