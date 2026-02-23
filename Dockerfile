@@ -58,7 +58,8 @@ RUN apt-get update && apt-get install -y \
     libffi-dev \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install requests paramiko --break-system-packages || pip3 install requests paramiko \
-    && gem install bundler -v 2.5.22 --no-document
+    && gem install bundler -v 2.5.22 --no-document \
+    && gem cleanup stringio 2>/dev/null || true
 
 # Copy production dependencies from builder
 COPY --from=builder /app/node_modules ./node_modules
