@@ -88,16 +88,16 @@ describe('ScannerService.getDashboardStats', () => {
         // Verify database calls
         expect(mockPrepare).toHaveBeenCalledTimes(3);
 
-        // Verify recent scans query structure - Ensure JOIN optimization is applied
+        // Verify recent scans query structure - Ensure correlated subquery optimization is applied
         const recentScansQuery = mockPrepare.mock.calls[2][0];
 
-        // Check for JOIN and GROUP BY
-        expect(recentScansQuery).toContain('LEFT JOIN scan_results sr');
-        expect(recentScansQuery).toContain('LEFT JOIN scan_vulnerabilities sv');
-        expect(recentScansQuery).toContain('GROUP BY s.id');
+        // Check for correlated subqueries
+        expect(recentScansQuery).toContain('(SELECT COUNT(*) FROM scan_results WHERE scan_id = s.id)');
+        expect(recentScansQuery).toContain('(SELECT COUNT(*) FROM scan_vulnerabilities WHERE scan_id = s.id)');
 
-        // Ensure no correlated subqueries in SELECT (the anti-pattern)
-        expect(recentScansQuery).not.toContain('(SELECT COUNT(*) FROM scan_results sr WHERE sr.scan_id = s.id)');
-        expect(recentScansQuery).not.toContain('(SELECT COUNT(*) FROM scan_vulnerabilities sv WHERE sv.scan_id = s.id)');
+        // Ensure no JOIN and GROUP BY (the anti-pattern for this case)
+        expect(recentScansQuery).not.toContain('LEFT JOIN scan_results sr');
+        expect(recentScansQuery).not.toContain('LEFT JOIN scan_vulnerabilities sv');
+        expect(recentScansQuery).not.toContain('GROUP BY s.id');
     });
 });
