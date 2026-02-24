@@ -874,7 +874,7 @@ except:
                                     findings.push({
                                         type: 'error',
                                         category: 'Metasploit nicht bereit',
-                                        title: 'Metasploit Ruby-Abhängigkeiten fehlen',
+                                        details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhaengigkeiten (Gems) sind nicht installiert. Bitte fuehren Sie die Metasploit-Synchronisation erneut durch (DB Update - Metasploit) - dabei werden die Gems automatisch installiert. Pruefen Sie auch: Ruby >= 2.7, Bundler >= 2.5, Build-Tools (gcc, g++, make), libpq-dev, libxml2-dev, libxslt1-dev.',
                                         details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhängigkeiten (Gems) sind nicht installiert. Bitte führen Sie die Metasploit-Synchronisation erneut durch (DB Update → Metasploit) – dabei werden die Gems automatisch installiert.',
                                         severity: 'high'
                                     });

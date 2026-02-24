@@ -866,7 +866,9 @@ async function syncMetasploit(userId) {
                 const stderrMatch = fullMsg.match(/STDERR:\s*([\s\S]*?)(?:\nError:|$)/);
                 const stderrMsg = stderrMatch ? stderrMatch[1].trim() : '';
                 const errMsg = stderrMsg || fullMsg.substring(fullMsg.length - 500);
-                emit('download', 35, `Warnung: bundle install fehlgeschlagen (${errMsg.substring(0, 500)}). Modul-Import wird fortgesetzt, aber Exploit-Ausführung wird nicht funktionieren. Stellen Sie sicher, dass Ruby, Bundler (v2.5.22) und Build-Tools (gcc, g++, make, libpq-dev, libxml2-dev etc.) installiert sind.`);
+                emit('download', 35, `Warnung: Bundle install fehlgeschlagen. Modul-Import wird fortgesetzt, aber Metasploit-Exploits koennen nicht ausgefuehrt werden.`);
+                emit('download', 36, `TROUBLESHOOTING: 1) Ruby >= 2.7 installiert? 2) Bundler >= 2.5 installiert? 3) Build-Tools (gcc, g++, make) vorhanden? 4) libpq-dev, libxml2-dev, libxslt1-dev installiert?`);
+                emit('download', 37, `HINWEIS: Module werden importiert, aber Metasploit-Exploits koennen nicht ausgefuehrt werden ohne Gems.`);
             }
         }
 
