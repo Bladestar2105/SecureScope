@@ -215,8 +215,8 @@ class AttackChainService extends EventEmitter {
         for (const ex of matchedExploits) {
             if (exploitCount >= maxExploits) break;
             if (addedExploits.has(ex.exploit_id)) continue;
-            // Only include exploits that have code available
-            if (!ex.exploit_code) continue;
+            // Only include exploits that have code available OR are Metasploit modules (which may not have local code path)
+            if (!ex.exploit_code && ex.source !== 'metasploit') continue;
 
             // NEW: Filter out auxiliary/fuzzers for Auto-Attack
             // We only want active exploitation that yields a shell
@@ -248,7 +248,7 @@ class AttackChainService extends EventEmitter {
             for (const ex of matchedExploits) {
                 if (exploitCount >= maxExploits) break;
                 if (addedExploits.has(ex.exploit_id)) continue;
-                if (!ex.exploit_code) continue;
+                if (!ex.exploit_code && ex.source !== 'metasploit') continue;
                 if (ex.exploit_db_id && (ex.exploit_db_id.startsWith('auxiliary/') || ex.exploit_db_id.startsWith('post/'))) continue;
 
                 addedExploits.add(ex.exploit_id);
@@ -386,7 +386,8 @@ class AttackChainService extends EventEmitter {
                     WHERE id = ?
                 `).run(currentStep, JSON.stringify(results), JSON.stringify(allFindings), executionId);
 
-                logger.info(`Attack chain ${chainId} completed for ${targetIp}:${targetPort} - ${allFindings.length} findings`);
+                const targetStr = targetPort ? `${targetIp}:${targetPort}` : targetIp;
+                logger.info(`Attack chain ${chainId} completed for ${targetStr} - ${allFindings.length} findings`);
                 logger.audit('ATTACK_CHAIN_COMPLETED', { executionId, chainId, targetIp, targetPort, findingsCount: allFindings.length });
 
                 this.emit('chainComplete', { executionId, scanId, chainId, status: 'completed', findingsCount: allFindings.length, target: targetIp });
@@ -675,7 +676,18 @@ except:
                             }
                         }
 
-                        const lport = params.LPORT ? parseInt(params.LPORT) : null;
+                        let lport = params.LPORT ? parseInt(params.LPORT) : null;
+
+                        // Auto-assign LPORT if missing for Metasploit exploits or exploits with code
+                        // This enables Auto-Attack to work without manual LPORT configuration
+                        if (!lport && (exploit.source === 'metasploit' || exploitData.code)) {
+                            try {
+                                lport = await ShellService.getFreePort();
+                                logger.info(`Auto-assigned LPORT: ${lport} for exploit ${exploit.id}`);
+                            } catch (e) {
+                                logger.warn('Failed to auto-assign LPORT:', e);
+                            }
+                        }
 
                         // Security Validation
                         if (lhost && !this._isValidHost(lhost)) {
