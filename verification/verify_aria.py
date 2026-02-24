@@ -1,58 +1,105 @@
-from playwright.sync_api import sync_playwright, expect
+import time
+import os
+import subprocess
+import threading
+from playwright.sync_api import sync_playwright
 
-def run(playwright):
-    browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context()
-    page = context.new_page()
+def start_server():
+    # Start a simple HTTP server on port 8000
+    subprocess.Popen(["python3", "-m", "http.server", "8000"], cwd="/app/public", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    time.sleep(2)
 
-    # 1. Login
-    page.goto("http://localhost:3000")
-    page.fill("#username", "admin")
-    page.fill("#password", "admin")
-    page.click("#loginBtn")
+def verify_aria(page):
+    # Mock APIs
+    page.route("**/api/auth/status", lambda route: route.fulfill(json={"authenticated": True, "user": {"id": 1, "username": "admin", "roles": ["admin"]}, "csrfToken": "test"}))
+    page.route("**/api/scan/dashboard", lambda route: route.fulfill(json={"totalScans": 10, "completedScans": 5, "activeScans": 0, "recentScans": []}))
 
-    # Handle force password change if needed
-    try:
-        # Check if we are redirected to password change form or still on login page with pw change form visible
-        page.wait_for_timeout(1000) # Wait for potential redirects/UI updates
-        if page.is_visible("#passwordChangeForm"):
-            print("Password change required. Changing password...")
-            page.fill("#currentPassword", "admin")
-            page.fill("#newPassword", "Admin123!")
-            page.fill("#confirmPassword", "Admin123!")
-            page.click("#pwChangeBtn")
-            page.wait_for_url("**/dashboard")
-    except:
-        pass
+    # Mock History
+    page.route("**/api/scan/history", lambda route: route.fulfill(json={"scans": [
+        {"id": 101, "target": "192.168.1.1", "scan_type": "quick", "status": "completed", "result_count": 5, "vuln_count": 0, "started_at": "2024-01-01T12:00:00Z"}
+    ]}))
 
-    # Wait for dashboard
-    page.wait_for_selector("#view-dashboard", timeout=10000)
-    print("Dashboard loaded")
+    # Mock Schedules
+    page.route("**/api/schedules", lambda route: route.fulfill(json={"schedules": [
+        {"id": 201, "name": "Daily Scan", "target": "10.0.0.1", "scan_type": "full", "cron_expression": "0 0 * * *", "enabled": True, "next_run": "2024-01-02T00:00:00Z"}
+    ]}))
 
-    # 2. Open Password Modal
-    # The sidebar item for password change
-    # <div class="nav-item" onclick="showPasswordModal()">
-    page.locator(".nav-item", has_text="Passwort ändern").click()
-    print("Clicked Password Change")
+    # Mock Users
+    page.route("**/api/users", lambda route: route.fulfill(json={"users": [
+        {"id": 301, "username": "testuser", "roles": ["user"], "last_login": "2024-01-01T10:00:00Z", "created_at": "2023-12-01T00:00:00Z"}
+    ]}))
 
-    # 3. Wait for modal
-    modal = page.locator("#passwordModal")
-    expect(modal).to_be_visible()
+    # Navigate
+    page.goto("http://localhost:8000/dashboard.html")
 
-    # 4. Verify Close Button ARIA Label
-    close_btn = modal.locator("button.btn-icon").first
-    aria_label = close_btn.get_attribute("aria-label")
-    print(f"Close button aria-label: {aria_label}")
+    # Wait for dashboard to load
+    page.wait_for_selector("#view-dashboard")
 
-    if aria_label != "Schließen":
-        print("FAIL: ARIA label is incorrect")
+    print("Dashboard loaded.")
+
+    # 1. Verify History Buttons
+    print("Checking History buttons...")
+    page.evaluate("switchView('history')")
+    page.wait_for_selector("#historyTableBody tr")
+
+    view_btn = page.locator('button[data-action="viewScanDetail"][aria-label="Details anzeigen"]')
+    delete_btn = page.locator('button[data-action="deleteScan"][aria-label="Scan löschen"]')
+
+    if view_btn.count() > 0:
+        print("PASS: Found 'Details anzeigen' button in history.")
     else:
-        print("PASS: ARIA label is correct")
+        print("FAIL: 'Details anzeigen' button not found in history.")
 
-    # 5. Take screenshot
-    page.screenshot(path="verification/aria_check.png")
+    if delete_btn.count() > 0:
+        print("PASS: Found 'Scan löschen' button in history.")
+    else:
+        print("FAIL: 'Scan löschen' button not found in history.")
 
-    browser.close()
+    # 2. Verify Schedules Buttons
+    print("Checking Schedules buttons...")
+    page.evaluate("switchView('schedules')")
+    page.wait_for_selector("#schedulesTableBody tr")
 
-with sync_playwright() as playwright:
-    run(playwright)
+    toggle_btn = page.locator('button[data-action="toggleSchedule"][aria-label="Zeitplan pausieren"]')
+    del_sched_btn = page.locator('button[data-action="deleteSchedule"][aria-label="Zeitplan löschen"]')
+
+    if toggle_btn.count() > 0:
+        print("PASS: Found 'Zeitplan pausieren' button.")
+    else:
+        print("FAIL: 'Zeitplan pausieren' button not found.")
+
+    if del_sched_btn.count() > 0:
+        print("PASS: Found 'Zeitplan löschen' button.")
+    else:
+        print("FAIL: 'Zeitplan löschen' button not found.")
+
+    # 3. Verify Users Buttons
+    print("Checking Users buttons...")
+    page.evaluate("switchView('users')")
+    page.wait_for_selector("#usersTableBody tr")
+
+    del_user_btn = page.locator('button[data-action="deleteUser"][aria-label="Benutzer löschen"]')
+
+    if del_user_btn.count() > 0:
+        print("PASS: Found 'Benutzer löschen' button.")
+    else:
+        print("FAIL: 'Benutzer löschen' button not found.")
+
+    # Screenshot for visual proof (even if labels are invisible)
+    page.screenshot(path="verification/verification.png")
+    print("Screenshot saved to verification/verification.png")
+
+if __name__ == "__main__":
+    start_server()
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            verify_aria(page)
+        except Exception as e:
+            print(f"Error: {e}")
+        finally:
+            browser.close()
+            # Kill server (rough way)
+            os.system("pkill -f 'python3 -m http.server'")
+
