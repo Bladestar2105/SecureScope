@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
-const { requirePermission } = require('../middleware/rbac');
+const { requirePermission, getUserPermissions } = require('../middleware/rbac');
 const attackChainService = require('../services/attackChainService');
 const logger = require('../services/logger');
 
@@ -38,13 +38,27 @@ router.get('/executions/history', requireAuth, (req, res) => {
     try {
         const { getDatabase } = require('../config/database');
         const db = getDatabase();
-        const executions = db.prepare(`
+
+        // RBAC Check
+        const { roles } = getUserPermissions(req.session.userId);
+        const isAdmin = roles.includes('admin');
+        const userId = req.session.userId;
+
+        let query = `
             SELECT e.*, c.name as chain_name 
             FROM attack_chain_executions e
             LEFT JOIN attack_chains c ON e.chain_id = c.id
-            ORDER BY e.started_at DESC
-            LIMIT 50
-        `).all();
+        `;
+        const params = [];
+
+        if (!isAdmin) {
+            query += ' WHERE e.executed_by = ?';
+            params.push(userId);
+        }
+
+        query += ' ORDER BY e.started_at DESC LIMIT 50';
+
+        const executions = db.prepare(query).all(...params);
         res.json({ executions });
     } catch (err) {
         logger.error('Error fetching execution history:', err);
@@ -68,7 +82,13 @@ router.get('/applicable/:scanId', requireAuth, (req, res) => {
 router.get('/executions/scan/:scanId', requireAuth, (req, res) => {
     try {
         const scanId = parseInt(req.params.scanId);
-        const executions = attackChainService.getExecutions(scanId);
+
+        // RBAC Check
+        const { roles } = getUserPermissions(req.session.userId);
+        const isAdmin = roles.includes('admin');
+        const userId = isAdmin ? null : req.session.userId;
+
+        const executions = attackChainService.getExecutions(scanId, userId);
         res.json({ executions });
     } catch (err) {
         logger.error('Error fetching executions:', err);
@@ -81,6 +101,15 @@ router.get('/executions/:id', requireAuth, (req, res) => {
     try {
         const exec = attackChainService.getExecutionById(parseInt(req.params.id));
         if (!exec) return res.status(404).json({ error: 'Ausführung nicht gefunden' });
+
+        // RBAC Check
+        const { roles } = getUserPermissions(req.session.userId);
+        const isAdmin = roles.includes('admin');
+
+        if (!isAdmin && exec.executed_by !== req.session.userId) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
         res.json({ execution: exec });
     } catch (err) {
         logger.error('Error fetching execution:', err);

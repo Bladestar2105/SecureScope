@@ -1010,15 +1010,24 @@ except:
     }
 
     // Get execution history for a scan
-    getExecutions(scanId) {
+    getExecutions(scanId, userId = null) {
         const db = getDatabase();
-        const execs = db.prepare(`
+        let query = `
             SELECT ace.*, ac.name as chain_name, ac.strategy, ac.risk_level as chain_risk
             FROM attack_chain_executions ace
             JOIN attack_chains ac ON ace.chain_id = ac.id
             WHERE ace.scan_id = ?
-            ORDER BY ace.started_at DESC
-        `).all(scanId);
+        `;
+        const params = [scanId];
+
+        if (userId) {
+            query += ' AND ace.executed_by = ?';
+            params.push(userId);
+        }
+
+        query += ' ORDER BY ace.started_at DESC';
+
+        const execs = db.prepare(query).all(...params);
 
         return execs.map(e => ({
             ...e,
