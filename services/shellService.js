@@ -161,6 +161,24 @@ class ShellService extends EventEmitter {
         const session = this.sessions.get(sessionId);
         return session && session.connected;
     }
+
+    /**
+     * Finds a free port on the system by binding to port 0.
+     * @returns {Promise<number>} - A free port number.
+     */
+    async getFreePort() {
+        return new Promise((resolve, reject) => {
+            const server = net.createServer();
+            server.unref(); // Don't keep event loop active
+            server.on('error', reject);
+            server.listen(0, () => {
+                const { port } = server.address();
+                server.close(() => {
+                    resolve(port);
+                });
+            });
+        });
+    }
 }
 
 module.exports = new ShellService();

@@ -386,7 +386,8 @@ class AttackChainService extends EventEmitter {
                     WHERE id = ?
                 `).run(currentStep, JSON.stringify(results), JSON.stringify(allFindings), executionId);
 
-                logger.info(`Attack chain ${chainId} completed for ${targetIp}:${targetPort} - ${allFindings.length} findings`);
+                const targetStr = targetPort ? `${targetIp}:${targetPort}` : targetIp;
+                logger.info(`Attack chain ${chainId} completed for ${targetStr} - ${allFindings.length} findings`);
                 logger.audit('ATTACK_CHAIN_COMPLETED', { executionId, chainId, targetIp, targetPort, findingsCount: allFindings.length });
 
                 this.emit('chainComplete', { executionId, scanId, chainId, status: 'completed', findingsCount: allFindings.length, target: targetIp });
@@ -675,7 +676,18 @@ except:
                             }
                         }
 
-                        const lport = params.LPORT ? parseInt(params.LPORT) : null;
+                        let lport = params.LPORT ? parseInt(params.LPORT) : null;
+
+                        // Auto-assign LPORT if missing for Metasploit exploits or exploits with code
+                        // This enables Auto-Attack to work without manual LPORT configuration
+                        if (!lport && (exploit.source === 'metasploit' || exploitData.code)) {
+                            try {
+                                lport = await ShellService.getFreePort();
+                                logger.info(`Auto-assigned LPORT: ${lport} for exploit ${exploit.id}`);
+                            } catch (e) {
+                                logger.warn('Failed to auto-assign LPORT:', e);
+                            }
+                        }
 
                         // Security Validation
                         if (lhost && !this._isValidHost(lhost)) {
