@@ -802,26 +802,46 @@ except:
                                 let payload = 'cmd/unix/reverse'; // Default safe fallback
                                 let platform = (exploit.platform || '').toLowerCase();
 
-                                // Fallback: Guess platform from module path if missing or generic
-                                if (!platform || platform === 'multi' || platform === 'unix') {
+                                // Improved Platform Detection:
+                                // If platform is generic (multi, unix, cgi, php, etc.) OR doesn't match a specific OS kernel
+                                // AND the module path contains a strong hint, use the hint.
+                                const isSpecificOS = platform.includes('windows') || platform.includes('linux') ||
+                                                    platform.includes('solaris') || platform.includes('osx') ||
+                                                    platform.includes('netbsd') || platform.includes('openbsd') || platform.includes('freebsd') ||
+                                                    platform === 'bsd' || platform === 'win';
+
+                                if (!platform || !isSpecificOS || platform === 'multi') {
                                     if (modulePath.includes('/windows/')) platform = 'windows';
                                     else if (modulePath.includes('/linux/')) platform = 'linux';
-                                    else if (modulePath.includes('/freebsd/') || modulePath.includes('/netbsd/') || modulePath.includes('/openbsd/')) platform = 'unix';
-                                    else if (modulePath.includes('/solaris/')) platform = 'unix';
+                                    else if (modulePath.includes('/freebsd/') || modulePath.includes('/netbsd/') || modulePath.includes('/openbsd/')) platform = 'bsd'; // Prefer specific BSD over generic Unix
+                                    else if (modulePath.includes('/solaris/')) platform = 'solaris';
                                     else if (modulePath.includes('/osx/')) platform = 'osx';
                                 }
 
-                                if (platform.includes('windows')) {
+                                // Payload Selection Logic
+                                if (platform.includes('windows') || platform === 'win') {
                                     if (platform.includes('_cmd')) payload = 'cmd/windows/reverse_powershell';
                                     else payload = 'windows/shell_reverse_tcp';
                                 } else if (platform.includes('linux')) {
                                     if (platform.includes('_cmd')) payload = 'cmd/unix/reverse';
                                     else payload = 'linux/x86/shell_reverse_tcp';
+                                } else if (platform.includes('bsd') || platform === 'freebsd' || platform === 'openbsd' || platform === 'netbsd') {
+                                    if (platform.includes('_cmd')) payload = 'cmd/unix/reverse';
+                                    else payload = 'bsd/x86/shell_reverse_tcp';
+                                } else if (platform.includes('solaris')) {
+                                    if (platform.includes('_cmd')) payload = 'cmd/unix/reverse';
+                                    else payload = 'solaris/x86/shell_reverse_tcp';
+                                } else if (platform.includes('osx') || platform.includes('macos')) {
+                                    if (platform.includes('_cmd')) payload = 'cmd/unix/reverse';
+                                    else payload = 'osx/x86/shell_reverse_tcp'; // Default to x86 for max compatibility
                                 } else if (platform.includes('java')) {
                                     payload = 'java/shell_reverse_tcp';
                                 } else if (platform.includes('php')) {
                                     payload = 'php/reverse_php';
-                                } else if (platform.includes('unix') || platform.includes('bsd') || platform.includes('solaris')) {
+                                } else if (platform.includes('python')) {
+                                    payload = 'python/shell_reverse_tcp';
+                                } else if (platform.includes('unix')) {
+                                    // Generic Unix usually implies command injection / script payloads
                                     payload = 'cmd/unix/reverse';
                                 }
 
