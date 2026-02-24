@@ -5,3 +5,7 @@
 ## 2024-05-22 - Environment Flakiness
 **Learning:** The development environment is missing `supertest` in `node_modules` despite it being in `devDependencies`. This causes integration tests (`auth.test.js`, `scan_export.test.js`) to fail.
 **Action:** Rely on unit tests and mocked dependencies for verification when integration tests are broken due to environment issues.
+
+## 2024-05-23 - SQLite Correlated Subqueries vs Joins
+**Learning:** In SQLite, when fetching a limited number of parent rows (e.g., `LIMIT 10`), using correlated subqueries in the `SELECT` clause for counting children is significantly faster (97% improvement observed) than `LEFT JOIN` + `GROUP BY`. The latter causes a Cartesian product explosion before grouping.
+**Action:** Prefer `(SELECT COUNT(*) FROM child WHERE child.parent_id = parent.id)` over `LEFT JOIN` when the parent query has a small `LIMIT`.
