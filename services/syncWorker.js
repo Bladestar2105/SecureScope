@@ -926,7 +926,43 @@ async function syncMetasploit(userId) {
                 const nameMatch = content.match(/'Name'\s*=>\s*['"](.+?)['"]/);
                 const descMatch = content.match(/'Description'\s*=>\s*%q\{(.+?)\}/s) || content.match(/'Description'\s*=>\s*['"](.+?)['"]/s);
                 const rankMatch = content.match(/'Rank'\s*=>\s*(\w+)/);
-                const platformMatch = content.match(/'Platform'\s*=>\s*\['(.+?)'\]/) || content.match(/'Platform'\s*=>\s*'(.+?)'/);
+
+                // Robust Platform Parsing
+                let platformRaw = 'Multi';
+                const platformArrayMatch = content.match(/'Platform'\s*=>\s*\[\s*(.+?)\s*\]/s);
+                const platformStringMatch = content.match(/'Platform'\s*=>\s*['"](.+?)['"]/);
+
+                if (platformArrayMatch) {
+                    // Extract strings from array content (e.g., 'linux', 'unix')
+                    const inner = platformArrayMatch[1];
+                    const parts = inner.match(/['"](.+?)['"]/g);
+                    if (parts) {
+                        const platforms = parts.map(p => p.replace(/['"]/g, ''));
+                        platformRaw = platforms.join(', ');
+                    } else if (inner.includes('%w')) {
+                        // Handle %w{ linux unix } or %w( linux unix )
+                        const words = inner.match(/%w[({]\s*(.+?)\s*[})]/);
+                        if (words) {
+                            platformRaw = words[1].replace(/\s+/g, ', ');
+                        }
+                    } else {
+                        // fallback for simple comma separated without quotes (unlikely in ruby but possible if constants)
+                        platformRaw = inner;
+                    }
+                } else if (platformStringMatch) {
+                    platformRaw = platformStringMatch[1];
+                }
+
+                // Arch Parsing (to distinguish CMD vs Binary payloads)
+                const archMatch = content.match(/'Arch'\s*=>\s*\[?\s*(.+?)\s*\]?,/s) || content.match(/'Arch'\s*=>\s*(\w+)/);
+                let isCmd = false;
+                if (archMatch) {
+                    const arch = archMatch[1].toLowerCase();
+                    if (arch.includes('cmd') || arch.includes('arch_cmd')) {
+                        isCmd = true;
+                    }
+                }
+
                 // CVE
                 const cveMatch = content.match(/'CVE',\s*'(\d{4}-\d+)'/);
                 // Port (often in DefaultOptions or RegisterOptions)
@@ -940,7 +976,13 @@ async function syncMetasploit(userId) {
 
                 const title = nameMatch ? nameMatch[1] : path.basename(relPath, '.rb');
                 const desc = descMatch ? descMatch[1].trim() : title;
-                const platform = platformMatch ? normPlatform(platformMatch[1]) : 'Multi';
+                let platform = normPlatform(platformRaw);
+
+                // Append _cmd suffix if Arch indicates command payload
+                // This helps AttackChainService distinguish between binary and cmd injection exploits
+                if (isCmd && !platform.includes('_cmd')) {
+                    platform += '_cmd';
+                }
                 const cveId = cveMatch ? `CVE-${cveMatch[1]}` : null;
                 const rank = rankMatch ? rankMatch[1] : 'NormalRanking';
 
