@@ -54,6 +54,10 @@ class CVEService {
             ORDER BY cvss_score DESC LIMIT 20
         `);
 
+        // Optimization: Cache query results
+        const cpeQueryCache = new Map();
+        const productQueryCache = new Map();
+
         const insertItems = [];
         const seenCVEs = new Set(); // Avoid duplicates per scan_result
 
@@ -76,7 +80,13 @@ class CVEService {
                     if (!searchTerm || searchTerm.length < 3) continue;
 
                     try {
-                        const cveResults = cpeMatchStmt.all(`%${searchTerm}%`);
+                        let cveResults;
+                        if (cpeQueryCache.has(searchTerm)) {
+                            cveResults = cpeQueryCache.get(searchTerm);
+                        } else {
+                            cveResults = cpeMatchStmt.all(`%${searchTerm}%`);
+                            cpeQueryCache.set(searchTerm, cveResults);
+                        }
 
                         for (const cve of cveResults) {
                             const key = `${resultKey}:${cve.cve_id}`;
@@ -105,7 +115,13 @@ class CVEService {
                 if (product.length < 3) continue;
 
                 try {
-                    const productResults = productMatchStmt.all(`%${product}%`, `%${product}%`);
+                    let productResults;
+                    if (productQueryCache.has(product)) {
+                        productResults = productQueryCache.get(product);
+                    } else {
+                        productResults = productMatchStmt.all(`%${product}%`, `%${product}%`);
+                        productQueryCache.set(product, productResults);
+                    }
 
                     for (const cve of productResults) {
                         const key = `${resultKey}:${cve.cve_id}`;
