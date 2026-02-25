@@ -166,3 +166,4 @@ logger.audit = (action, details = {}) => {
 };
 
 module.exports = logger;
+module.exports.maskSensitiveData = maskSensitiveData;
