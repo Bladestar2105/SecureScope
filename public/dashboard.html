@@ -151,7 +151,7 @@
                     <div  class="card-body">
                         <form id="scanForm" data-action="startScan" data-event="submit">
                             <div  class="scan-config">
-                                <div  class="form-group"><label for="scanTarget">Ziel (IP-Adresse)</label>
+                                <div  class="form-group"><label for="scanTarget">Ziel (IP-Adresse) <span class="color-red">*</span></label>
                                     <input type="text" id="scanTarget"  placeholder="z.B. 192.168.1.1" required class="form-control">
                                     <small   class="text-muted mt-1 d-block fs-075">Einzelne IP oder CIDR (z.B. 192.168.1.0/24)</small></div>
                                 <div  class="form-group"><label for="scanType">Scan-Typ</label>
@@ -783,8 +783,8 @@
     <div  id="fingerprintModal" class="modal-overlay">
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-fingerprint mr-1"></i> Fingerprint hinzufügen</h3><button  data-action="hideFingerprintModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="fpForm">
-                <div  class="form-group"><label>Port *</label><input type="number" id="fpFormPort"  placeholder="z.B. 22" required min="1" max="65535" class="form-control"></div>
-                <div  class="form-group"><label>Service-Name *</label><input type="text" id="fpFormService"  placeholder="z.B. OpenSSH" required class="form-control"></div>
+                <div  class="form-group"><label>Port <span class="color-red">*</span></label><input type="number" id="fpFormPort"  placeholder="z.B. 22" required min="1" max="65535" class="form-control"></div>
+                <div  class="form-group"><label>Service-Name <span class="color-red">*</span></label><input type="text" id="fpFormService"  placeholder="z.B. OpenSSH" required class="form-control"></div>
                 <div  class="form-group"><label>Version</label><input type="text" id="fpFormVersion"  placeholder="z.B. 9.x" class="form-control"></div>
                 <div  class="form-group"><label>Banner-Pattern</label><input type="text" id="fpFormBanner"  placeholder="z.B. SSH-2.0-OpenSSH" class="form-control"></div>
                 <div  class="form-group"><label>Betriebssystem</label><input type="text" id="fpFormOS"  placeholder="z.B. Linux" class="form-control"></div>
@@ -800,7 +800,7 @@
     <div  id="exploitModal" class="modal-overlay">
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-database-exclamation mr-1"></i> Exploit hinzufügen</h3><button  data-action="hideExploitModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="exploitForm">
-                <div  class="form-group"><label>Titel *</label><input type="text" id="exploitFormTitle"  placeholder="Exploit-Titel" required class="form-control"></div>
+                <div  class="form-group"><label>Titel <span class="color-red">*</span></label><input type="text" id="exploitFormTitle"  placeholder="Exploit-Titel" required class="form-control"></div>
                 <div  class="form-group"><label>CVE-ID</label><input type="text" id="exploitFormCVE"  placeholder="z.B. CVE-2024-1234" class="form-control"></div>
                 <div  class="form-group"><label>Exploit-DB ID</label><input type="text" id="exploitFormEDB"  placeholder="z.B. EDB-12345" class="form-control"></div>
                 <div  class="form-group"><label>Service</label><input type="text" id="exploitFormService"  placeholder="z.B. OpenSSH" class="form-control"></div>
@@ -821,7 +821,7 @@
     <div  id="chainModal" class="modal-overlay">
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-diagram-3 mr-1"></i> Neue Angriffskette</h3><button  data-action="hideChainModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="chainForm">
-                <div  class="form-group"><label>Name *</label><input type="text" id="chainFormName"  placeholder="z.B. Custom SSH Audit" required class="form-control"></div>
+                <div  class="form-group"><label>Name <span class="color-red">*</span></label><input type="text" id="chainFormName"  placeholder="z.B. Custom SSH Audit" required class="form-control"></div>
                 <div  class="form-group"><label>Beschreibung</label><textarea id="chainFormDesc"  rows="2" placeholder="Beschreibung der Kette" class="form-control"></textarea></div>
                 <div  class="form-group"><label>Strategie</label><select id="chainFormStrategy"  class="form-control"><option value="passive">Passiv – Nur Reconnaissance</option><option value="standard" selected>Standard – Recon + Audit</option><option value="aggressive">Aggressiv – Inkl. Exploit-Matching</option><option value="thorough">Gründlich – Alle Methoden</option></select></div>
                 <div  class="form-group"><label>Tiefe (1-4)</label><input type="number" id="chainFormDepth"  value="2" min="1" max="4" class="form-control"></div>
@@ -843,8 +843,8 @@
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-shield-lock mr-1"></i> <span id="credModalTitle">Neue Zugangsdaten</span></h3><button  data-action="hideCredentialModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="credForm">
                 <input type="hidden" id="credEditId">
-                <div  class="form-group"><label>Name *</label><input type="text" id="credName"  placeholder="z.B. Prod-Server SSH" required class="form-control"></div>
-                <div  class="form-group"><label>Authentifizierungsmethode *</label>
+                <div  class="form-group"><label>Name <span class="color-red">*</span></label><input type="text" id="credName"  placeholder="z.B. Prod-Server SSH" required class="form-control"></div>
+                <div  class="form-group"><label>Authentifizierungsmethode <span class="color-red">*</span></label>
                     <select id="credAuthMethod"  data-action="toggleCredFields" data-event="change" class="form-control">
                         <option value="password">Passwort</option><option value="ssh_key">SSH-Key</option><option value="ssh_password">SSH + Passwort</option>
                         <option value="active_directory">Active Directory</option><option value="snmp">SNMP Community</option>
@@ -879,10 +879,10 @@
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-calendar-plus mr-1"></i> <span id="scheduleModalTitle">Neuer geplanter Scan</span></h3><button  data-action="hideScheduleModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="scheduleForm">
                 <input type="hidden" id="scheduleEditId">
-                <div  class="form-group"><label>Name</label><input type="text" id="scheduleName"  placeholder="z.B. Nightly Server Scan" required class="form-control"></div>
-                <div  class="form-group"><label>Ziel</label><input type="text" id="scheduleTarget"  placeholder="z.B. 192.168.1.0/24" required class="form-control"></div>
+                <div  class="form-group"><label>Name <span class="color-red">*</span></label><input type="text" id="scheduleName"  placeholder="z.B. Nightly Server Scan" required class="form-control"></div>
+                <div  class="form-group"><label>Ziel <span class="color-red">*</span></label><input type="text" id="scheduleTarget"  placeholder="z.B. 192.168.1.0/24" required class="form-control"></div>
                 <div  class="form-group"><label>Scan-Typ</label><select id="scheduleScanType"  class="form-control"><option value="quick">Quick</option><option value="standard" selected>Standard</option><option value="full">Full</option><option value="custom">Custom</option></select></div>
-                <div  class="form-group"><label>Zeitplan (Cron)</label>
+                <div  class="form-group"><label>Zeitplan (Cron) <span class="color-red">*</span></label>
                     <select id="schedulePreset"  data-action="applyCronPreset" data-event="change" class="form-control"><option value="">Benutzerdefiniert...</option></select>
                     <input type="text" id="scheduleCron"  placeholder="0 2 * * *" required class="form-control mt-1">
                     <small   class="text-muted d-block fs-075 mt-025">Format: Minute Stunde Tag Monat Wochentag</small></div>
@@ -898,8 +898,8 @@
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-person-plus mr-1"></i> <span id="userModalTitle">Neuer Benutzer</span></h3><button  data-action="hideUserModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="userForm">
                 <input type="hidden" id="userEditId">
-                <div  class="form-group"><label>Benutzername</label><input type="text" id="userFormName"  placeholder="benutzername" required class="form-control"></div>
-                <div  class="form-group"><label>Passwort</label><input type="password" id="userFormPass"  placeholder="Mindestens 8 Zeichen" required class="form-control"></div>
+                <div  class="form-group"><label>Benutzername <span class="color-red">*</span></label><input type="text" id="userFormName"  placeholder="benutzername" required class="form-control"></div>
+                <div  class="form-group"><label>Passwort <span class="color-red">*</span></label><input type="password" id="userFormPass"  placeholder="Mindestens 8 Zeichen" required class="form-control"></div>
                 <div  class="form-group"><label>Rollen</label>
                     <div id="userRoleCheckboxes"></div></div>
             </form></div>
