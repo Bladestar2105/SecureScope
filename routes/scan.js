@@ -357,20 +357,24 @@ router.get('/events', requireAuth, (req, res) => {
 
     // Attack Chain Events
     const onChainProgress = (data) => {
-        // NOTE: Attack chains are not strictly bound to a scan owner in the same way as scans,
-        // but we can check if the user has access. For now, we assume if they are authenticated and listening,
-        // they should see it if they initiated it.
-        // Ideally, we should check ownership of the execution or scan.
-        // Assuming req.session.userId initiated it or has access.
-        res.write(`data: ${JSON.stringify({ type: 'chain_progress', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'chain_progress', ...data })}\n\n`);
+        }
     };
 
     const onChainComplete = (data) => {
-        res.write(`data: ${JSON.stringify({ type: 'chain_complete', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'chain_complete', ...data })}\n\n`);
+        }
     };
 
     const onChainError = (data) => {
-        res.write(`data: ${JSON.stringify({ type: 'chain_error', ...data })}\n\n`);
+        const scan = scannerService.getScanStatus(data.scanId);
+        if (scan && scan.user_id === req.session.userId) {
+            res.write(`data: ${JSON.stringify({ type: 'chain_error', ...data })}\n\n`);
+        }
     };
 
     scannerService.on('scanProgress', onProgress);
