@@ -66,7 +66,9 @@ function spawnSyncWorker(type, userId) {
             try {
                 const msg = JSON.parse(buffer.trim());
                 broadcastProgress(type, msg);
-            } catch {}
+            } catch (err) {
+                logger.error(`Error parsing final worker buffer for ${type}:`, err);
+            }
         }
     });
 
@@ -84,12 +86,20 @@ function broadcastProgress(type, data) {
     if (!clients) return;
     const msg = "data: " + JSON.stringify(data) + "\n\n";
     for (const res of clients) {
-        try { res.write(msg); } catch {}
+        try {
+            res.write(msg);
+        } catch (err) {
+            logger.error(`Error writing SSE progress update for ${type}:`, err);
+        }
     }
     // Close SSE connections on done/error
     if (data.phase === 'done' || data.phase === 'error') {
         for (const res of clients) {
-            try { res.end(); } catch {}
+            try {
+                res.end();
+            } catch (err) {
+                logger.error(`Error closing SSE connection for ${type}:`, err);
+            }
         }
         clients.clear();
     }
