@@ -3,6 +3,7 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 const { requirePermission, getUserPermissions } = require('../middleware/rbac');
 const attackChainService = require('../services/attackChainService');
+const scannerService = require('../services/scanner');
 const logger = require('../services/logger');
 
 // Get all attack chains
@@ -139,6 +140,15 @@ router.post('/auto-attack', requireAuth, requirePermission('scan:start'), async 
             return res.status(400).json({ error: 'scanId und targetIp sind erforderlich' });
         }
 
+        // Verify scan ownership
+        const scan = scannerService.getScanStatus(parseInt(scanId));
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+        if (scan.user_id !== req.session.userId && !req.userRoles.includes('admin')) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
         const result = await attackChainService.autoAttack(
             parseInt(scanId),
             targetIp,
@@ -164,12 +174,19 @@ router.post('/execute', requireAuth, requirePermission('scan:start'), async (req
         if (!scanId || !chainId) {
             return res.status(400).json({ error: 'scanId und chainId sind erforderlich' });
         }
+
+        // Verify scan ownership
+        const scan = scannerService.getScanStatus(parseInt(scanId));
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+        if (scan.user_id !== req.session.userId && !req.userRoles.includes('admin')) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
         let ip = targetIp;
         if (!ip) {
-            const { getDatabase } = require('../config/database');
-            const db = getDatabase();
-            const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
-            ip = scan ? scan.target : '0.0.0.0';
+            ip = scan.target; // Use verified scan object
         }
         const result = await attackChainService.executeChain(
             parseInt(scanId), parseInt(chainId), ip,
@@ -192,12 +209,19 @@ router.post('/:id/execute', requireAuth, requirePermission('scan:start'), async 
         if (!scanId) {
             return res.status(400).json({ error: 'scanId ist erforderlich' });
         }
+
+        // Verify scan ownership
+        const scan = scannerService.getScanStatus(parseInt(scanId));
+        if (!scan) {
+            return res.status(404).json({ error: 'Scan nicht gefunden' });
+        }
+        if (scan.user_id !== req.session.userId && !req.userRoles.includes('admin')) {
+            return res.status(403).json({ error: 'Zugriff verweigert' });
+        }
+
         let ip = targetIp;
         if (!ip) {
-            const { getDatabase } = require('../config/database');
-            const db = getDatabase();
-            const scan = db.prepare('SELECT target FROM scans WHERE id = ?').get(parseInt(scanId));
-            ip = scan ? scan.target : '0.0.0.0';
+            ip = scan.target; // Use verified scan object
         }
         const result = await attackChainService.executeChain(
             parseInt(scanId), chainId, ip,
