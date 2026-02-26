@@ -220,6 +220,16 @@
 
     function esc(str) { const d = document.createElement('div'); d.textContent = str; return d.innerHTML; }
 
+    window.copyToClipboard = function(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            showToast('success', 'Kopiert', 'Inhalt in die Zwischenablage kopiert.');
+        }).catch(err => {
+            console.error('Copy failed', err);
+            showToast('error', 'Fehler', 'Konnte nicht kopieren.');
+        });
+    };
+
     // Format scan type badge with stealth indicator
     function scanTypeBadge(scanType) {
         if (!scanType) return '<span class="badge badge-blue">-</span>';
@@ -382,8 +392,9 @@
                     html += `<tr class="bg-tertiary border-bottom">
                         <td colspan="6" class="p-075-1">
                             <div class="d-flex justify-between align-center">
-                                <div>
+                                <div class="d-flex align-center gap-05">
                                     <strong class="fs-1">${esc(ip)}</strong>
+                                    <button class="btn-icon btn-outline" style="padding:2px 6px;font-size:0.8rem" data-action="copyToClipboard" data-arg0="${esc(ip)}" title="IP kopieren" aria-label="IP kopieren"><i class="bi bi-clipboard"></i></button>
                                     <span class="text-muted ml-2 fs-085">OS: ${esc(osInfo)}</span>
                                 </div>
                                 <button class="btn btn-outline btn-sm" data-action="showCreateChainForTargetModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
@@ -478,8 +489,9 @@
                     html += `<tr class="bg-tertiary border-bottom">
                         <td colspan="6" class="p-075-1">
                             <div class="d-flex justify-between align-center">
-                                <div>
+                                <div class="d-flex align-center gap-05">
                                     <strong class="fs-1">${esc(ip)}</strong>
+                                    <button class="btn-icon btn-outline" style="padding:2px 6px;font-size:0.8rem" data-action="copyToClipboard" data-arg0="${esc(ip)}" title="IP kopieren" aria-label="IP kopieren"><i class="bi bi-clipboard"></i></button>
                                     <span class="text-muted ml-2 fs-085">OS: ${esc(osInfo)}</span>
                                 </div>
                                 <button class="btn btn-outline btn-sm" data-action="showCreateChainForTargetModal" data-arg0="${scanId}" data-arg1="${esc(ip)}">
