@@ -186,12 +186,18 @@ class CVEService {
     static getScanCVESummary(scanId) {
         const db = getDatabase();
         try {
-            const total = db.prepare('SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ?').get(scanId).c;
-            const critical = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'critical'").get(scanId).c;
-            const high = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'high'").get(scanId).c;
-            const medium = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'medium'").get(scanId).c;
-            const low = db.prepare("SELECT COUNT(*) as c FROM scan_vulnerabilities WHERE scan_id = ? AND severity = 'low'").get(scanId).c;
-            return { total, critical, high, medium, low };
+            // Optimization: Combine 5 queries into 1 using conditional aggregation
+            const summary = db.prepare(`
+                SELECT
+                    COUNT(*) as total,
+                    COUNT(CASE WHEN severity = 'critical' THEN 1 END) as critical,
+                    COUNT(CASE WHEN severity = 'high' THEN 1 END) as high,
+                    COUNT(CASE WHEN severity = 'medium' THEN 1 END) as medium,
+                    COUNT(CASE WHEN severity = 'low' THEN 1 END) as low
+                FROM scan_vulnerabilities
+                WHERE scan_id = ?
+            `).get(scanId);
+            return summary;
         } catch (e) {
             return { total: 0, critical: 0, high: 0, medium: 0, low: 0 };
         }
