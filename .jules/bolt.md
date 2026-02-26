@@ -9,3 +9,7 @@
 ## 2024-05-23 - SQLite Correlated Subqueries vs Joins
 **Learning:** In SQLite, when fetching a limited number of parent rows (e.g., `LIMIT 10`), using correlated subqueries in the `SELECT` clause for counting children is significantly faster (97% improvement observed) than `LEFT JOIN` + `GROUP BY`. The latter causes a Cartesian product explosion before grouping.
 **Action:** Prefer `(SELECT COUNT(*) FROM child WHERE child.parent_id = parent.id)` over `LEFT JOIN` when the parent query has a small `LIMIT`.
+
+## 2024-05-24 - Optimizing Multiple Database Queries
+**Learning:** Consolidating multiple `COUNT` queries with different `WHERE` clauses into a single query using `COUNT(CASE WHEN ...)` or `SUM(CASE WHEN ...)` significantly reduces database overhead.
+**Action:** When needing multiple counts from the same table with different conditions, use conditional aggregation in a single query instead of separate queries.
