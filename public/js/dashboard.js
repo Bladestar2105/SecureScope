@@ -222,8 +222,22 @@
 
     window.copyToClipboard = function(text) {
         if (!text) return;
+        const btn = (this instanceof Element) ? this : null;
         navigator.clipboard.writeText(text).then(() => {
             showToast('success', 'Kopiert', 'Inhalt in die Zwischenablage kopiert.');
+            // Visual feedback
+            if (btn) {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    const originalClass = icon.className;
+                    icon.className = 'bi bi-check-lg';
+                    icon.style.color = 'var(--accent-green)';
+                    setTimeout(() => {
+                        icon.className = originalClass;
+                        icon.style.color = '';
+                    }, 2000);
+                }
+            }
         }).catch(err => {
             console.error('Copy failed', err);
             showToast('error', 'Fehler', 'Konnte nicht kopieren.');
@@ -1197,7 +1211,25 @@
     window.hideExploitCodeModal = function () { document.getElementById('exploitCodeModal').classList.remove('active'); };
     window.copyExploitCode = function () {
         const code = document.getElementById('exploitCodeContent').textContent;
-        navigator.clipboard.writeText(code).then(() => showToast('success', 'Kopiert', 'Code in Zwischenablage kopiert.'));
+        const btn = (this instanceof Element) ? this : null;
+        navigator.clipboard.writeText(code).then(() => {
+            showToast('success', 'Kopiert', 'Code in Zwischenablage kopiert.');
+            // Visual feedback
+            if (btn) {
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    const originalClass = icon.className;
+                    icon.className = 'bi bi-check-lg';
+                    btn.classList.remove('btn-outline');
+                    btn.classList.add('btn-success');
+                    setTimeout(() => {
+                        icon.className = originalClass;
+                        btn.classList.add('btn-outline');
+                        btn.classList.remove('btn-success');
+                    }, 2000);
+                }
+            }
+        });
     };
 
     // ============================================
