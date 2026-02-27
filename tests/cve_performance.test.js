@@ -16,11 +16,13 @@ jest.mock('../services/logger', () => ({
 describe('CVEService Performance Optimization', () => {
     let mockPrepare;
     let mockTransaction;
+    let mockAll;
 
     beforeEach(() => {
         // Reset mocks
         jest.clearAllMocks();
 
+        mockAll = jest.fn().mockReturnValue([]); // Default empty results
         mockPrepare = jest.fn();
         mockTransaction = jest.fn((callback) => (items) => {
             // Execute the transaction callback immediately
@@ -34,7 +36,7 @@ describe('CVEService Performance Optimization', () => {
         });
     });
 
-    test('reproduction: measures number of prepare calls', () => {
+    test('reproduction: verifies reduction in query executions', () => {
         const scanId = 123;
         const scanResultsCount = 5;
 
@@ -56,11 +58,12 @@ describe('CVEService Performance Optimization', () => {
         mockPrepare.mockImplementation((query) => {
             const stmt = {
                 get: jest.fn().mockReturnValue({ c: 1 }), // for COUNT(*)
-                all: jest.fn().mockReturnValue([]),       // default empty results
+                all: mockAll, // Shared mock to spy on calls
                 run: jest.fn()
             };
 
             // If it's the scan_results query, return our mock data
+            // We use a new mock function here to separate it from CVE queries
             if (typeof query === 'string' && query.trim().startsWith('SELECT id, port')) {
                 stmt.all = jest.fn().mockReturnValue(scanResults);
             }
@@ -70,28 +73,27 @@ describe('CVEService Performance Optimization', () => {
         // Run the service method
         CVEService.matchCVEs(scanId);
 
-        // Analyze calls
-        const prepareCalls = mockPrepare.mock.calls.map(call => call[0]);
+        // Analyze execution calls
+        // We want to count how many times `all()` was called for CVE fetching queries
+        // In the original code, this was 2 * scanResultsCount = 10 times
+        // In the optimized code, this should be 1 (CPE batch) + 1 (Product batch) = 2 times total
+        // (Assuming batch size > 5, which it is)
 
-        // Filter for the specific queries we are optimizing
-        // These are the queries inside the loop:
-        // 1. SELECT ... FROM cve_entries WHERE affected_products LIKE ?
-        // 2. SELECT ... FROM cve_entries WHERE (affected_products LIKE ? OR title LIKE ?)
+        // Get all calls to the shared mockAll spy
+        const allCalls = mockAll.mock.calls;
 
-        const cveQueries = prepareCalls.filter(query =>
-            query.includes('FROM cve_entries') &&
-            query.includes('LIKE ?')
-        );
+        // Filter calls that might be related to CVE fetching (though strictly all calls to this spy are CVE fetches because scanResults query uses a different spy)
+        const cveFetchExecutions = allCalls.length;
 
         console.log(`[DEBUG] Total scan results: ${scanResultsCount}`);
-        console.log(`[DEBUG] Total prepare calls for CVE queries: ${cveQueries.length}`);
+        console.log(`[DEBUG] Total executions of CVE fetch queries: ${cveFetchExecutions}`);
 
         // Assertions
-        // In unoptimized code: 2 queries prepared per result -> 2 * 5 = 10 calls
-        // In optimized code: 2 queries prepared total -> 2 calls
+        // Expect drastically fewer calls than the N+1 scenario
+        expect(cveFetchExecutions).toBeLessThan(scanResultsCount);
 
-        // We expect optimized behavior now
-        // Should be exactly 2 (one for each prepared statement type)
-        expect(cveQueries.length).toBe(2);
+        // Specifically, we expect exactly 2 calls here (1 for CPEs, 1 for Products) because all 5 items fit in one batch
+        // Note: The logic executes `fetchAndCache` for CPEs and Products separately.
+        expect(cveFetchExecutions).toBe(2);
     });
 });

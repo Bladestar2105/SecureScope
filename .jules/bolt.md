@@ -13,3 +13,7 @@
 ## 2024-05-24 - Optimizing Multiple Database Queries
 **Learning:** Consolidating multiple `COUNT` queries with different `WHERE` clauses into a single query using `COUNT(CASE WHEN ...)` or `SUM(CASE WHEN ...)` significantly reduces database overhead.
 **Action:** When needing multiple counts from the same table with different conditions, use conditional aggregation in a single query instead of separate queries.
+
+## 2024-05-25 - Bulk Fetching vs Iterative Queries
+**Learning:** Iterating through scan results and executing SQL queries inside the loop (N+1 problem) is a major bottleneck. Bulk fetching using dynamic `IN` or `LIKE ... OR ...` clauses combined with in-memory matching drastically reduces database round-trips.
+**Action:** Refactor iterative database logic to "collect -> bulk fetch -> in-memory match" pattern. When using `LIKE` with user input, perform case-insensitive matching in Javascript to match SQLite's default behavior while maintaining performance.
