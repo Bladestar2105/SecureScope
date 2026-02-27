@@ -7,6 +7,19 @@ class EmailService {
         this.transporters = new Map(); // userId -> transporter
     }
 
+    // Helper to escape HTML characters
+    static escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        const map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     // Get notification settings for a user
     static getSettings(userId) {
         const db = getDatabase();
@@ -152,7 +165,12 @@ class EmailService {
         const settings = EmailService.getSettings(userId);
         if (!settings || !settings.notify_scan_complete) return;
 
-        const subject = `Scan #${scan.id} abgeschlossen - ${resultCount} offene Ports`;
+        // Escape potentially dangerous inputs
+        const target = EmailService.escapeHtml(scan.target);
+        const scanType = EmailService.escapeHtml(scan.scan_type);
+        const scanId = EmailService.escapeHtml(scan.id);
+
+        const subject = `Scan #${scanId} abgeschlossen - ${resultCount} offene Ports`;
 
         const html = `
             <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -160,10 +178,10 @@ class EmailService {
                     <h1 style="color: white; margin: 0; font-size: 20px;">🛡️ SecureScope - Scan abgeschlossen</h1>
                 </div>
                 <div style="background: #1a2234; color: #e2e8f0; padding: 20px; border-radius: 0 0 8px 8px;">
-                    <h2 style="color: #3b82f6; font-size: 16px;">Scan #${scan.id} - ${scan.target}</h2>
+                    <h2 style="color: #3b82f6; font-size: 16px;">Scan #${scanId} - ${target}</h2>
                     <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
-                        <tr><td style="padding: 8px; color: #94a3b8;">Ziel:</td><td style="padding: 8px;">${scan.target}</td></tr>
-                        <tr><td style="padding: 8px; color: #94a3b8;">Typ:</td><td style="padding: 8px;">${scan.scan_type}</td></tr>
+                        <tr><td style="padding: 8px; color: #94a3b8;">Ziel:</td><td style="padding: 8px;">${target}</td></tr>
+                        <tr><td style="padding: 8px; color: #94a3b8;">Typ:</td><td style="padding: 8px;">${scanType}</td></tr>
                         <tr><td style="padding: 8px; color: #94a3b8;">Status:</td><td style="padding: 8px; color: #10b981;">Abgeschlossen</td></tr>
                         <tr><td style="padding: 8px; color: #94a3b8;">Offene Ports:</td><td style="padding: 8px; font-weight: bold;">${resultCount}</td></tr>
                     </table>
@@ -192,14 +210,18 @@ class EmailService {
         if (!settings || !settings.notify_critical_found) return;
         if (!criticalVulns || criticalVulns.length === 0) return;
 
-        const subject = `⚠️ KRITISCH: ${criticalVulns.length} kritische Schwachstellen in Scan #${scan.id}`;
+        // Escape scan details
+        const scanId = EmailService.escapeHtml(scan.id);
+        const target = EmailService.escapeHtml(scan.target);
+
+        const subject = `⚠️ KRITISCH: ${criticalVulns.length} kritische Schwachstellen in Scan #${scanId}`;
 
         const vulnRows = criticalVulns.slice(0, 10).map(v => `
             <tr>
-                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${v.ip_address}:${v.port}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${v.cve_id || 'N/A'}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #2a3548; color: #ef4444;">${v.title}</td>
-                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${v.cvss_score || 'N/A'}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${EmailService.escapeHtml(v.ip_address)}:${v.port}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${EmailService.escapeHtml(v.cve_id || 'N/A')}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #2a3548; color: #ef4444;">${EmailService.escapeHtml(v.title)}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #2a3548;">${EmailService.escapeHtml(v.cvss_score || 'N/A')}</td>
             </tr>
         `).join('');
 
@@ -210,7 +232,7 @@ class EmailService {
                 </div>
                 <div style="background: #1a2234; color: #e2e8f0; padding: 20px; border-radius: 0 0 8px 8px;">
                     <p style="color: #ef4444; font-weight: bold;">
-                        ${criticalVulns.length} kritische Schwachstelle(n) in Scan #${scan.id} (${scan.target}) gefunden!
+                        ${criticalVulns.length} kritische Schwachstelle(n) in Scan #${scanId} (${target}) gefunden!
                     </p>
                     <table style="width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 13px;">
                         <thead>
