@@ -23,9 +23,6 @@ class CVEService {
             return matches;
         }
 
-        // Ensure scan_vulnerabilities table exists (should be handled by schema now, but safe to keep)
-        // We rely on schema initialization for table creation now.
-
         // Prepare insert statement
         const insertStmt = db.prepare(`
             INSERT OR IGNORE INTO scan_vulnerabilities
@@ -39,24 +36,150 @@ class CVEService {
             FROM scan_results WHERE scan_id = ? AND state = 'open'
         `).all(scanId);
 
-        // Optimization: Prepare statements once outside the loop
-        const cpeMatchStmt = db.prepare(`
-            SELECT cve_id, title, severity, cvss_score
-            FROM cve_entries
-            WHERE affected_products LIKE ? AND state = 'PUBLISHED'
-            ORDER BY cvss_score DESC LIMIT 30
-        `);
+        // --- Optimization: Bulk Fetching Strategy ---
+        // Collect all unique search terms first to avoid N+1 queries
+        const cpeSearchTerms = new Set();
+        const productSearchTerms = new Set();
 
-        const productMatchStmt = db.prepare(`
-            SELECT cve_id, title, severity, cvss_score
-            FROM cve_entries
-            WHERE (affected_products LIKE ? OR title LIKE ?) AND state = 'PUBLISHED'
-            ORDER BY cvss_score DESC LIMIT 20
-        `);
+        for (const result of scanResults) {
+            // Collect CPE terms
+            if (result.service_cpe) {
+                const cpes = result.service_cpe.split(',');
+                for (const cpe of cpes) {
+                    const cpeParts = cpe.trim().split(':');
+                    if (cpeParts.length >= 4) {
+                        cpeSearchTerms.add(cpeParts.slice(2, 5).join(':')); // vendor:product:version
+                    } else if (cpeParts.length >= 3) {
+                        cpeSearchTerms.add(cpeParts.slice(2, 4).join(':')); // vendor:product
+                    }
+                }
+            }
+            // Collect Product terms
+            if (result.service_product) {
+                const product = result.service_product.trim();
+                if (product.length >= 3) {
+                    productSearchTerms.add(product);
+                }
+            }
+        }
 
-        // Optimization: Cache query results
-        const cpeQueryCache = new Map();
-        const productQueryCache = new Map();
+        // Pre-fetch CVEs for all terms
+        // Map<searchTerm, Array<CVE>>
+        const cveCache = new Map();
+
+        // Helper to fetch and cache
+        const fetchAndCache = (terms, queryTemplate, type) => {
+            if (terms.size === 0) return;
+            const termsArray = Array.from(terms);
+
+            // SQLite has a limit on parameters, so we might need to batch if there are too many terms.
+            // A safe batch size is around 100-500.
+            const BATCH_SIZE = 50;
+
+            for (let i = 0; i < termsArray.length; i += BATCH_SIZE) {
+                const batch = termsArray.slice(i, i + BATCH_SIZE);
+                // Construct dynamic query
+                // We use LIKE for each term combined with OR
+                const conditions = batch.map(() => `affected_products LIKE ?`).join(' OR ');
+                const query = `
+                    SELECT cve_id, title, severity, cvss_score, affected_products
+                    FROM cve_entries
+                    WHERE (${conditions}) AND state = 'PUBLISHED'
+                    ORDER BY cvss_score DESC
+                `;
+
+                // Add % wildcards to params
+                const params = batch.map(t => `%${t}%`);
+
+                try {
+                    const results = db.prepare(query).all(...params);
+
+                    // Distribute results into cache based on which term matched
+                    // Since a CVE can match multiple terms, we check each term against the result
+                    for (const row of results) {
+                        // Optimization: Lowercase once per row
+                        const affectedProductsLower = row.affected_products ? row.affected_products.toLowerCase() : '';
+
+                        for (const term of batch) {
+                            // Case-insensitive check to match SQLite LIKE behavior
+                            const termLower = term.toLowerCase();
+
+                            if (affectedProductsLower.includes(termLower)) {
+                                if (!cveCache.has(term)) {
+                                    cveCache.set(term, []);
+                                }
+                                // Dedup check
+                                const list = cveCache.get(term);
+                                if (!list.find(c => c.cve_id === row.cve_id)) {
+                                    list.push(row);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    logger.warn(`Bulk CVE fetch failed for ${type}:`, e.message);
+                }
+            }
+        };
+
+        // Execute bulk fetches
+        if (cpeSearchTerms.size > 0) {
+            // For CPEs, we check affected_products LIKE %term%
+            fetchAndCache(cpeSearchTerms, null, 'CPE');
+        }
+
+        if (productSearchTerms.size > 0) {
+            // For Products, we check (affected_products LIKE %term% OR title LIKE %term%)
+            // We reuse the helper but need custom query logic if we want to search title too.
+            // To keep it simple and consistent with previous logic which had separate queries:
+            // The previous productMatchStmt was: WHERE (affected_products LIKE ? OR title LIKE ?)
+
+            const termsArray = Array.from(productSearchTerms);
+            const BATCH_SIZE = 50;
+
+            for (let i = 0; i < termsArray.length; i += BATCH_SIZE) {
+                const batch = termsArray.slice(i, i + BATCH_SIZE);
+                const conditions = batch.map(() => `(affected_products LIKE ? OR title LIKE ?)`).join(' OR ');
+                const query = `
+                    SELECT cve_id, title, severity, cvss_score, affected_products
+                    FROM cve_entries
+                    WHERE (${conditions}) AND state = 'PUBLISHED'
+                    ORDER BY cvss_score DESC
+                `;
+
+                const params = [];
+                batch.forEach(t => {
+                    params.push(`%${t}%`);
+                    params.push(`%${t}%`);
+                });
+
+                try {
+                    const results = db.prepare(query).all(...params);
+                    for (const row of results) {
+                        // Optimization: Lowercase once per row
+                        const affectedProductsLower = row.affected_products ? row.affected_products.toLowerCase() : '';
+                        const titleLower = row.title ? row.title.toLowerCase() : '';
+
+                        for (const term of batch) {
+                            // Case-insensitive check to match SQLite LIKE behavior
+                            const termLower = term.toLowerCase();
+
+                            if (affectedProductsLower.includes(termLower) || titleLower.includes(termLower)) {
+                                if (!cveCache.has(term)) {
+                                    cveCache.set(term, []);
+                                }
+                                const list = cveCache.get(term);
+                                if (!list.find(c => c.cve_id === row.cve_id)) {
+                                    list.push(row);
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    logger.warn(`Bulk CVE fetch failed for Product:`, e.message);
+                }
+            }
+        }
 
         const insertItems = [];
         const seenCVEs = new Set(); // Avoid duplicates per scan_result
@@ -68,7 +191,6 @@ class CVEService {
             if (result.service_cpe) {
                 const cpes = result.service_cpe.split(',');
                 for (const cpe of cpes) {
-                    // Extract vendor:product from CPE (e.g. cpe:/a:apache:http_server -> apache:http_server)
                     const cpeParts = cpe.trim().split(':');
                     let searchTerm = '';
                     if (cpeParts.length >= 4) {
@@ -79,32 +201,25 @@ class CVEService {
 
                     if (!searchTerm || searchTerm.length < 3) continue;
 
-                    try {
-                        let cveResults;
-                        if (cpeQueryCache.has(searchTerm)) {
-                            cveResults = cpeQueryCache.get(searchTerm);
-                        } else {
-                            cveResults = cpeMatchStmt.all(`%${searchTerm}%`);
-                            cpeQueryCache.set(searchTerm, cveResults);
-                        }
+                    const cveResults = cveCache.get(searchTerm) || [];
 
-                        for (const cve of cveResults) {
-                            const key = `${resultKey}:${cve.cve_id}`;
-                            if (seenCVEs.has(key)) continue;
-                            seenCVEs.add(key);
+                    // Limit to top 30 as per original logic
+                    const topResults = cveResults.slice(0, 30);
 
-                            insertItems.push({
-                                scan_id: scanId, scan_result_id: result.id,
-                                cve_id: cve.cve_id, title: cve.title,
-                                severity: cve.severity, cvss_score: cve.cvss_score,
-                                matched_service: result.service_product || result.service,
-                                matched_version: result.service_version || '',
-                                match_confidence: 90
-                            });
-                            matches.push({ ...cve, confidence: 90, matched_by: 'cpe' });
-                        }
-                    } catch (e) {
-                        logger.warn(`CPE matching error for ${searchTerm}:`, e.message);
+                    for (const cve of topResults) {
+                        const key = `${resultKey}:${cve.cve_id}`;
+                        if (seenCVEs.has(key)) continue;
+                        seenCVEs.add(key);
+
+                        insertItems.push({
+                            scan_id: scanId, scan_result_id: result.id,
+                            cve_id: cve.cve_id, title: cve.title,
+                            severity: cve.severity, cvss_score: cve.cvss_score,
+                            matched_service: result.service_product || result.service,
+                            matched_version: result.service_version || '',
+                            match_confidence: 90
+                        });
+                        matches.push({ ...cve, confidence: 90, matched_by: 'cpe' });
                     }
                 }
             }
@@ -114,32 +229,25 @@ class CVEService {
                 const product = result.service_product.trim();
                 if (product.length < 3) continue;
 
-                try {
-                    let productResults;
-                    if (productQueryCache.has(product)) {
-                        productResults = productQueryCache.get(product);
-                    } else {
-                        productResults = productMatchStmt.all(`%${product}%`, `%${product}%`);
-                        productQueryCache.set(product, productResults);
-                    }
+                const cveResults = cveCache.get(product) || [];
 
-                    for (const cve of productResults) {
-                        const key = `${resultKey}:${cve.cve_id}`;
-                        if (seenCVEs.has(key)) continue;
-                        seenCVEs.add(key);
+                // Limit to top 20 as per original logic
+                const topResults = cveResults.slice(0, 20);
 
-                        insertItems.push({
-                            scan_id: scanId, scan_result_id: result.id,
-                            cve_id: cve.cve_id, title: cve.title,
-                            severity: cve.severity, cvss_score: cve.cvss_score,
-                            matched_service: product,
-                            matched_version: result.service_version || '',
-                            match_confidence: 60
-                        });
-                        matches.push({ ...cve, confidence: 60, matched_by: 'product' });
-                    }
-                } catch (e) {
-                    logger.warn(`Product matching error for ${product}:`, e.message);
+                for (const cve of topResults) {
+                    const key = `${resultKey}:${cve.cve_id}`;
+                    if (seenCVEs.has(key)) continue;
+                    seenCVEs.add(key);
+
+                    insertItems.push({
+                        scan_id: scanId, scan_result_id: result.id,
+                        cve_id: cve.cve_id, title: cve.title,
+                        severity: cve.severity, cvss_score: cve.cvss_score,
+                        matched_service: product,
+                        matched_version: result.service_version || '',
+                        match_confidence: 60
+                    });
+                    matches.push({ ...cve, confidence: 60, matched_by: 'product' });
                 }
             }
         }
