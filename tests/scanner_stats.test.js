@@ -1,4 +1,3 @@
-
 // Mock dependencies
 jest.mock('ip-cidr', () => {
     return {
@@ -26,7 +25,7 @@ jest.mock('../services/cveService', () => ({}));
 const scannerService = require('../services/scanner');
 const { getDatabase } = require('../config/database');
 
-describe('ScannerService.getDashboardStats', () => {
+describe('ScannerService.getDashboardStats and getScanHistory', () => {
     let mockDb;
     let mockPrepare;
     let mockGet;
@@ -64,7 +63,7 @@ describe('ScannerService.getDashboardStats', () => {
             target: '192.168.1.1'
         });
 
-        // 3. Recent scans query
+        // 3. Scan History query
         const mockRecentScans = [
             { id: 100, target: '192.168.1.10', result_count: 5, vuln_count: 2 },
             { id: 99, target: '192.168.1.11', result_count: 3, vuln_count: 0 }
@@ -99,5 +98,45 @@ describe('ScannerService.getDashboardStats', () => {
         expect(recentScansQuery).not.toContain('LEFT JOIN scan_results sr');
         expect(recentScansQuery).not.toContain('LEFT JOIN scan_vulnerabilities sv');
         expect(recentScansQuery).not.toContain('GROUP BY s.id');
+    });
+
+    test('should retrieve scan history using optimized query without LEFT JOIN', () => {
+        const userId = 1;
+
+        // 1. Total count query
+        mockGet.mockReturnValueOnce({ count: 2 });
+
+        // 2. Scans query
+        const mockScans = [
+            { id: 100, target: '192.168.1.10', result_count: 5, vuln_count: 2 },
+            { id: 99, target: '192.168.1.11', result_count: 3, vuln_count: 0 }
+        ];
+        mockAll.mockReturnValueOnce(mockScans);
+
+        // Execute method
+        const history = scannerService.getScanHistory(userId);
+
+        // Verify results
+        expect(history.scans).toEqual(mockScans);
+
+        // Verify database calls
+        expect(mockPrepare).toHaveBeenCalledTimes(2);
+
+        // Verify scans query structure - Ensure correlated subquery optimization is applied
+        const scansQuery = mockPrepare.mock.calls[1][0];
+
+        // Check for correlated subqueries
+        expect(scansQuery).toContain('(SELECT COUNT(*) FROM scan_results WHERE scan_id = s.id)');
+        expect(scansQuery).toContain('(SELECT COUNT(*) FROM scan_vulnerabilities WHERE scan_id = s.id)');
+
+        // Ensure no JOIN and GROUP BY
+        expect(scansQuery).not.toContain('LEFT JOIN scan_results sr');
+        expect(scansQuery).not.toContain('LEFT JOIN scan_vulnerabilities sv');
+        expect(scansQuery).not.toContain('GROUP BY s.id');
+
+        // Ensure count query is optimized too
+        const countQuery = mockPrepare.mock.calls[0][0];
+        expect(countQuery).not.toContain('LEFT JOIN');
+        expect(countQuery).not.toContain('GROUP BY');
     });
 });

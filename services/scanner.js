@@ -50,7 +50,7 @@ const QUERIES = {
     GET_SCAN_RESULTS_PAGINATED: 'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port LIMIT ? OFFSET ?',
     GET_SCAN_RESULTS_COUNT: 'SELECT COUNT(*) as count FROM scan_results WHERE scan_id = ?',
     GET_ALL_SCAN_RESULTS: 'SELECT * FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port',
-    GET_SCAN_HISTORY_BASE: 'SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count FROM scans s LEFT JOIN scan_results sr ON s.id = sr.scan_id LEFT JOIN scan_vulnerabilities sv ON s.id = sv.scan_id WHERE s.user_id = ?',
+    GET_SCAN_HISTORY_BASE: 'SELECT s.*, (SELECT COUNT(*) FROM scan_results WHERE scan_id = s.id) as result_count, (SELECT COUNT(*) FROM scan_vulnerabilities WHERE scan_id = s.id) as vuln_count FROM scans s WHERE s.user_id = ?',
     GET_SCAN_RESULTS_FOR_COMPARE: 'SELECT ip_address, port, protocol, service, state, risk_level, service_product, service_version, banner FROM scan_results WHERE scan_id = ? ORDER BY ip_address, port'
 };
 
@@ -618,13 +618,13 @@ class ScannerService extends EventEmitter {
         if (filters.target) { query += ' AND s.target LIKE ?'; params.push(`%${filters.target}%`); }
         if (filters.status) { query += ' AND s.status = ?'; params.push(filters.status); }
 
-        query += ' GROUP BY s.id ORDER BY s.started_at DESC';
+        query += ' ORDER BY s.started_at DESC';
 
         const page = filters.page || 1;
         const limit = filters.limit || 20;
         const offset = (page - 1) * limit;
 
-        const countQuery = query.replace('SELECT s.*, COUNT(DISTINCT sr.id) as result_count, COUNT(DISTINCT sv.id) as vuln_count', 'SELECT COUNT(DISTINCT s.id) as count').replace(' GROUP BY s.id ORDER BY s.started_at DESC', '');
+        const countQuery = query.replace('SELECT s.*, (SELECT COUNT(*) FROM scan_results WHERE scan_id = s.id) as result_count, (SELECT COUNT(*) FROM scan_vulnerabilities WHERE scan_id = s.id) as vuln_count', 'SELECT COUNT(*) as count').replace(' ORDER BY s.started_at DESC', '');
         const total = db.prepare(countQuery).get(...params);
 
         query += ' LIMIT ? OFFSET ?';
