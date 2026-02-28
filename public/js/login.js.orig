@@ -277,12 +277,10 @@
     // ============================================
     // Password Toggle
     // ============================================
-    const togglePasswordBtns = document.querySelectorAll('.password-toggle');
-    togglePasswordBtns.forEach(btn => {
-        btn.addEventListener('click', function() {
-            const targetId = this.getAttribute('data-target');
-            if (!targetId) return;
-            const passwordInput = document.getElementById(targetId);
+    const togglePasswordBtn = document.getElementById('togglePassword');
+    if (togglePasswordBtn) {
+        togglePasswordBtn.addEventListener('click', function() {
+            const passwordInput = document.getElementById('password');
             const icon = this.querySelector('i');
 
             if (passwordInput.type === 'password') {
@@ -297,7 +295,7 @@
                 this.setAttribute('aria-label', 'Passwort anzeigen');
             }
         });
-    });
+    }
 
     // ============================================
     // Initialize
