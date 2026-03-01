@@ -2839,6 +2839,29 @@
     }
 
     document.addEventListener('click', (e) => {
+        const toggleBtn = e.target.closest('.password-toggle');
+        if (toggleBtn) {
+            const targetId = toggleBtn.getAttribute('data-target');
+            if (targetId) {
+                const passwordInput = document.getElementById(targetId);
+                const icon = toggleBtn.querySelector('i');
+                if (passwordInput && icon) {
+                    if (passwordInput.type === 'password') {
+                        passwordInput.type = 'text';
+                        icon.classList.remove('bi-eye');
+                        icon.classList.add('bi-eye-slash');
+                        toggleBtn.setAttribute('aria-label', 'Passwort verbergen');
+                    } else {
+                        passwordInput.type = 'password';
+                        icon.classList.remove('bi-eye-slash');
+                        icon.classList.add('bi-eye');
+                        toggleBtn.setAttribute('aria-label', 'Passwort anzeigen');
+                    }
+                }
+            }
+            return;
+        }
+
         const target = e.target.closest('[data-action]');
         if (!target || (target.dataset.event && target.dataset.event !== 'click')) return;
         handleDataAction(target, e);
