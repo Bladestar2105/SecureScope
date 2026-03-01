@@ -3,6 +3,7 @@ const router = express.Router();
 const scannerService = require('../services/scanner');
 const attackChainService = require('../services/attackChainService');
 const { requireAuth } = require('../middleware/auth');
+const { requirePermission } = require('../middleware/rbac');
 const { scanLimiter } = require('../middleware/rateLimit');
 const UserService = require('../services/userService');
 const logger = require('../services/logger');
@@ -12,7 +13,7 @@ const exportService = require('../services/exportService');
 router.use(requireAuth);
 
 // GET /api/scan/dashboard - Dashboard stats
-router.get('/dashboard', (req, res) => {
+router.get('/dashboard', requirePermission('scan:view'), (req, res) => {
     try {
         const stats = scannerService.getDashboardStats(req.session.userId);
         res.json(stats);
@@ -23,7 +24,7 @@ router.get('/dashboard', (req, res) => {
 });
 
 // GET /api/scan/:id - Get single scan with results
-router.get('/:id(\\d+)', (req, res) => {
+router.get('/:id(\\d+)', requirePermission('scan:view'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         const scan = scannerService.getScanStatus(scanId);
@@ -47,7 +48,7 @@ router.get('/:id(\\d+)', (req, res) => {
 });
 
 // DELETE /api/scan/:id - Delete a scan
-router.delete('/:id(\\d+)', (req, res) => {
+router.delete('/:id(\\d+)', requirePermission('scan:delete'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         const db = require('../config/database').getDatabase();
@@ -79,7 +80,7 @@ router.delete('/:id(\\d+)', (req, res) => {
 });
 
 // POST /api/scan/start - Start a new scan
-router.post('/start', scanLimiter, async (req, res) => {
+router.post('/start', scanLimiter, requirePermission('scan:start'), async (req, res) => {
     try {
         const { target, scanType, customPorts, stealthMode } = req.body;
 
@@ -119,7 +120,7 @@ router.post('/start', scanLimiter, async (req, res) => {
 });
 
 // GET /api/scan/status/:id - Get scan status
-router.get('/status/:id', (req, res) => {
+router.get('/status/:id', requirePermission('scan:view'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         if (isNaN(scanId)) {
@@ -144,7 +145,7 @@ router.get('/status/:id', (req, res) => {
 });
 
 // POST /api/scan/stop/:id - Stop a running scan
-router.post('/stop/:id', (req, res) => {
+router.post('/stop/:id', requirePermission('scan:stop'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         if (isNaN(scanId)) {
@@ -178,7 +179,7 @@ router.post('/stop/:id', (req, res) => {
 });
 
 // GET /api/scan/results/:id - Get scan results with pagination
-router.get('/results/:id', (req, res) => {
+router.get('/results/:id', requirePermission('scan:view'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         if (isNaN(scanId)) {
@@ -207,7 +208,7 @@ router.get('/results/:id', (req, res) => {
 });
 
 // GET /api/scan/cves/:id - Get CVE matches for a scan
-router.get('/cves/:id', (req, res) => {
+router.get('/cves/:id', requirePermission('scan:view'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         if (isNaN(scanId)) {
@@ -233,7 +234,7 @@ router.get('/cves/:id', (req, res) => {
 });
 
 // GET /api/scan/history - Get scan history
-router.get('/history', (req, res) => {
+router.get('/history', requirePermission('scan:view'), (req, res) => {
     try {
         const filters = {
             dateFrom: req.query.dateFrom || null,
@@ -254,7 +255,7 @@ router.get('/history', (req, res) => {
 });
 
 // GET /api/scan/compare - Compare two scans
-router.get('/compare', (req, res) => {
+router.get('/compare', requirePermission('scan:view'), (req, res) => {
     try {
         const scanId1 = parseInt(req.query.scan1);
         const scanId2 = parseInt(req.query.scan2);
@@ -284,7 +285,7 @@ router.get('/compare', (req, res) => {
 });
 
 // GET /api/scan/export/:id - Export scan results
-router.get('/export/:id', (req, res) => {
+router.get('/export/:id', requirePermission('scan:export'), (req, res) => {
     try {
         const scanId = parseInt(req.params.id);
         const format = req.query.format || 'json';
