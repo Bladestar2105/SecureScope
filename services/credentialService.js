@@ -260,9 +260,17 @@ class CredentialService {
     // Get credential statistics
     static getStats(userId) {
         const db = getDatabase();
-        const total = db.prepare('SELECT COUNT(*) as count FROM credentials WHERE created_by = ?').get(userId);
+
+        // Combine total and valid counts into a single query
+        const baseStats = db.prepare(`
+            SELECT
+                COUNT(*) as total,
+                COUNT(CASE WHEN is_valid = 1 THEN 1 END) as valid
+            FROM credentials
+            WHERE created_by = ?
+        `).get(userId);
+
         const byMethod = db.prepare('SELECT auth_method, COUNT(*) as count FROM credentials WHERE created_by = ? GROUP BY auth_method').all(userId);
-        const valid = db.prepare('SELECT COUNT(*) as count FROM credentials WHERE created_by = ? AND is_valid = 1').get(userId);
         const recentUsage = db.prepare(`
             SELECT COUNT(*) as count FROM credential_usage_log cul
             JOIN credentials c ON cul.credential_id = c.id
@@ -270,9 +278,9 @@ class CredentialService {
         `).get(userId);
 
         return {
-            total: total.count,
-            valid: valid.count,
-            invalid: total.count - valid.count,
+            total: baseStats.total,
+            valid: baseStats.valid,
+            invalid: baseStats.total - baseStats.valid,
             byMethod,
             recentUsageCount: recentUsage.count
         };
