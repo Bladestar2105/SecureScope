@@ -9,3 +9,7 @@
 ## 2025-05-21 - Visual Feedback for Copy Actions
 **Learning:** Users often miss toast notifications for quick actions like "copy to clipboard". Immediate visual feedback on the triggering element (e.g., icon swap, color change) significantly improves confidence and delight.
 **Action:** Implement button state changes (icon/color) alongside toast notifications for copy actions to reinforce success.
+
+## 2025-05-22 - Reusable Password Toggle Implementation
+**Learning:** For SPAs using event delegation on the document body, generic UX components like a `.password-toggle` can be easily wired up to work universally without needing to attach individual event listeners to each element upon creation.
+**Action:** When implementing micro-UX components in DOM-manipulation heavy SPAs, favor event delegation in the main script to ensure dynamically created instances (like modals) work automatically.

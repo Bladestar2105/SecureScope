@@ -715,7 +715,16 @@
                                         <div  class="form-group"><label>SMTP-Port</label><input type="number" id="smtpPort"  value="587" class="form-control"></div>
                                         <div  class="form-group"><label  class="d-flex align-center gap-1"><input type="checkbox" id="smtpSecure"> SSL/TLS verwenden</label></div>
                                         <div  class="form-group"><label>SMTP-Benutzer</label><input type="text" id="smtpUser"  placeholder="Benutzername" class="form-control"></div>
-                                        <div  class="form-group"><label>SMTP-Passwort</label><input type="password" id="smtpPass"  placeholder="Passwort" class="form-control"></div>
+                                        <div  class="form-group">
+                                            <label>SMTP-Passwort</label>
+                                            <div class="input-group">
+                                                <i class="bi bi-lock input-icon"></i>
+                                                <input type="password" id="smtpPass"  placeholder="Passwort" class="form-control">
+                                                <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="smtpPass">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                        </div>
                                         <div   class="form-group full-width border-top-section">
                                             <h4  class="fs-0875 mb-075">Benachrichtigen bei:</h4>
                                             <label  class="d-flex align-center gap-1 mb-1"><input type="checkbox" id="notifScanComplete" checked> Scan abgeschlossen</label>
@@ -851,7 +860,16 @@
                         <option value="api_key">API-Key</option><option value="database">Datenbank</option><option value="certificate">Zertifikat</option>
                     </select></div>
                 <div  class="form-group"><label>Benutzername</label><input type="text" id="credUsername"  placeholder="Benutzername" class="form-control"></div>
-                <div  id="credPasswordGroup" class="form-group"><label>Passwort / Secret</label><input type="password" id="credPassword"  placeholder="Passwort eingeben" class="form-control"></div>
+                <div  id="credPasswordGroup" class="form-group">
+                    <label>Passwort / Secret</label>
+                    <div class="input-group">
+                        <i class="bi bi-key input-icon"></i>
+                        <input type="password" id="credPassword"  placeholder="Passwort eingeben" class="form-control">
+                        <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="credPassword">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
                 <div  id="credSshKeyGroup" class="form-group hidden"><label>SSH Private Key</label><textarea id="credSshKey"  rows="4" placeholder="-----BEGIN OPENSSH PRIVATE KEY-----" class="form-control"></textarea></div>
                 <div  id="credDomainGroup" class="form-group"><label>Domain</label><input type="text" id="credDomain"  placeholder="z.B. CORP.LOCAL" class="form-control"></div>
                 <div  class="form-group"><label>Zielbereich</label><input type="text" id="credTargetScope"  placeholder="z.B. 192.168.1.0/24 oder * für alle" class="form-control">
@@ -866,9 +884,36 @@
     <div  id="passwordModal" class="modal-overlay">
         <div  class="modal"><div  class="modal-header"><h3><i  class="bi bi-key mr-1"></i> Passwort ändern</h3><button  data-action="hidePasswordModal" aria-label="Schließen" class="btn-icon btn-outline"><i  class="bi bi-x-lg"></i></button></div>
             <div  class="modal-body"><form id="dashboardPwForm" data-action="changePassword" data-event="submit">
-                <div  class="form-group"><label>Aktuelles Passwort</label><input type="password" id="modalCurrentPw"  required class="form-control"></div>
-                <div  class="form-group"><label>Neues Passwort</label><input type="password" id="modalNewPw"  required class="form-control"></div>
-                <div  class="form-group"><label>Passwort bestätigen</label><input type="password" id="modalConfirmPw"  required class="form-control"></div>
+                <div  class="form-group">
+                    <label>Aktuelles Passwort</label>
+                    <div class="input-group">
+                        <i class="bi bi-lock input-icon"></i>
+                        <input type="password" id="modalCurrentPw"  required class="form-control">
+                        <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="modalCurrentPw">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div  class="form-group">
+                    <label>Neues Passwort</label>
+                    <div class="input-group">
+                        <i class="bi bi-key input-icon"></i>
+                        <input type="password" id="modalNewPw"  required class="form-control">
+                        <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="modalNewPw">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div  class="form-group">
+                    <label>Passwort bestätigen</label>
+                    <div class="input-group">
+                        <i class="bi bi-key-fill input-icon"></i>
+                        <input type="password" id="modalConfirmPw"  required class="form-control">
+                        <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="modalConfirmPw">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
                 <ul  class="password-requirements"><li>Mindestens 8 Zeichen</li><li>Groß- und Kleinbuchstaben</li><li>Mindestens eine Zahl</li></ul></form></div>
             <div  class="modal-footer"><button  data-action="hidePasswordModal" class="btn btn-outline">Abbrechen</button><button  data-action="changePassword" class="btn btn-success"><i  class="bi bi-check-lg"></i> Speichern</button></div>
         </div>
@@ -899,7 +944,16 @@
             <div  class="modal-body"><form id="userForm">
                 <input type="hidden" id="userEditId">
                 <div  class="form-group"><label>Benutzername <span class="color-red">*</span></label><input type="text" id="userFormName"  placeholder="benutzername" required class="form-control"></div>
-                <div  class="form-group"><label>Passwort <span class="color-red">*</span></label><input type="password" id="userFormPass"  placeholder="Mindestens 8 Zeichen" required class="form-control"></div>
+                <div  class="form-group">
+                    <label>Passwort <span class="color-red">*</span></label>
+                    <div class="input-group">
+                        <i class="bi bi-lock input-icon"></i>
+                        <input type="password" id="userFormPass"  placeholder="Mindestens 8 Zeichen" required class="form-control">
+                        <button type="button" aria-label="Passwort anzeigen" class="password-toggle" data-target="userFormPass">
+                            <i class="bi bi-eye"></i>
+                        </button>
+                    </div>
+                </div>
                 <div  class="form-group"><label>Rollen</label>
                     <div id="userRoleCheckboxes"></div></div>
             </form></div>
