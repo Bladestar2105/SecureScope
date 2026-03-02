@@ -4,7 +4,7 @@ const https = require('https');
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const { execSync, exec } = require('child_process');
+const { execSync, exec, spawn } = require('child_process');
 
 const DATA_DIR = path.join(__dirname, '..', 'data');
 const CVE_DIR = path.join(DATA_DIR, 'cve');
@@ -67,19 +67,42 @@ class CVESyncService {
      */
     static async downloadWithCurl(url, destPath) {
         return new Promise((resolve, reject) => {
-            const cmd = `curl -L -f -o "${destPath}" --progress-bar --max-time 600 --connect-timeout 30 "${url}"`;
             this.emitProgress('download', 0, `Starte Download von ${url.split('/').pop()}...`);
-            exec(cmd, { maxBuffer: 10 * 1024 * 1024 }, (err, stdout, stderr) => {
-                if (err) {
-                    // Try wget as fallback
-                    const wgetCmd = `wget -q -O "${destPath}" --timeout=30 "${url}"`;
-                    exec(wgetCmd, { maxBuffer: 10 * 1024 * 1024 }, (err2) => {
-                        if (err2) return reject(new Error(`Download fehlgeschlagen: ${err.message}`));
-                        resolve(destPath);
-                    });
-                    return;
+            const curl = spawn('curl', ['-L', '-f', '-o', destPath, '--progress-bar', '--max-time', '600', '--connect-timeout', '30', url], { stdio: 'ignore' });
+
+            let fallbackTriggered = false;
+
+            const runWgetFallback = (curlErrorMsg) => {
+                if (fallbackTriggered) return;
+                fallbackTriggered = true;
+
+                const wget = spawn('wget', ['-q', '-O', destPath, '--timeout=30', url], { stdio: 'ignore' });
+                let wgetErrorMsg = '';
+
+                wget.on('error', (err) => {
+                    wgetErrorMsg = err.message;
+                });
+
+                wget.on('close', (wgetCode) => {
+                    if (wgetCode !== 0) {
+                        return reject(new Error(`Download fehlgeschlagen. Wget exit: ${wgetCode}, Error: ${wgetErrorMsg}. Curl error: ${curlErrorMsg}`));
+                    }
+                    resolve(destPath);
+                });
+            };
+
+            let curlErrorMsg = '';
+            curl.on('error', (err) => {
+                curlErrorMsg = err.message;
+                runWgetFallback(`Error: ${err.message}`);
+            });
+
+            curl.on('close', (code) => {
+                if (code !== 0) {
+                    runWgetFallback(`Exit code: ${code}`);
+                } else {
+                    resolve(destPath);
                 }
-                resolve(destPath);
             });
         });
     }
