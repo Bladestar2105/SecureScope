@@ -2908,5 +2908,64 @@
     window.loadAuditHistory = loadAuditHistory;
     window.loadDbUpdateHistory = loadDbUpdateHistory;
 
+    // ============================================
+    // Notifications Settings
+    // ============================================
+    window.toggleEmailFields = function () {
+        const enabled = document.getElementById('emailEnabled').checked;
+        const fields = document.getElementById('emailFields');
+        if (fields) {
+            fields.style.display = enabled ? 'block' : 'none';
+            // Also enable/disable the inputs to prevent HTML5 validation if hidden
+            const inputs = fields.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => input.disabled = !enabled);
+        }
+    };
+
+    window.saveNotificationSettings = async function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+        const btn = e.target.querySelector('button[type="submit"]');
+        const origText = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm mr-1"></span> Speichern...';
+
+        const data = {
+            emailEnabled: document.getElementById('emailEnabled').checked,
+            emailAddress: document.getElementById('notifEmail').value,
+            smtpHost: document.getElementById('smtpHost').value,
+            smtpPort: parseInt(document.getElementById('smtpPort').value, 10),
+            smtpSecure: document.getElementById('smtpSecure').checked,
+            smtpUser: document.getElementById('smtpUser').value,
+            smtpPass: document.getElementById('smtpPass').value,
+            notifyScanComplete: document.getElementById('notifScanComplete').checked,
+            notifyCriticalFound: document.getElementById('notifCritical').checked,
+            notifyScheduledReport: document.getElementById('notifScheduled').checked
+        };
+
+        try {
+            await api('/api/notifications/settings', 'PUT', data);
+            showToast('success', 'Erfolgreich', 'Benachrichtigungseinstellungen gespeichert.');
+            loadNotifications();
+        } catch (err) {
+            showToast('error', 'Fehler', err.message);
+        } finally {
+            btn.disabled = false; btn.innerHTML = origText;
+        }
+    };
+
+    window.testEmail = async function (e) {
+        const btn = e.currentTarget || e.target.closest('button');
+        const origText = btn.innerHTML;
+        btn.disabled = true; btn.innerHTML = '<span class="spinner spinner-sm mr-1"></span> Sende Test...';
+
+        try {
+            await api('/api/notifications/test', 'POST');
+            showToast('success', 'Erfolgreich', 'Test-E-Mail wurde versendet.');
+        } catch (err) {
+            showToast('error', 'Fehler beim Senden', err.message);
+        } finally {
+            btn.disabled = false; btn.innerHTML = origText;
+        }
+    };
+
     init();
 })();
