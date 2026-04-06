@@ -141,4 +141,35 @@ describe('AttackChainService MSF Command Generation', () => {
         expect(cmd).toContain('BUNDLE_GEMFILE=');
         expect(cmd).toContain('bundle exec ./msfconsole');
     });
+
+    test('runs metasploit exploit even when local exploit code is missing', async () => {
+        const step = {
+            type: 'exploit',
+            name: 'MSF ohne lokalen Code',
+            exploitId: 130555
+        };
+
+        const exploitMock = {
+            id: 130555,
+            title: 'MSF only module',
+            source: 'metasploit',
+            exploit_db_id: 'exploits/windows/smb/ms08_067_netapi',
+            platform: 'windows',
+            port: 445
+        };
+
+        const db = getDatabase();
+        const stmt = db.prepare();
+        stmt.get.mockReturnValue(exploitMock);
+        db.prepare.mockReturnValue(stmt);
+
+        // Key scenario: module metadata exists, but no local cached code blob
+        ExploitDbSyncService.getExploitCode.mockReturnValue(null);
+
+        await AttackChainService._executeStep(step, 101, '192.168.1.1', 445, {}, { LHOST: '10.0.0.1', LPORT: 4444 });
+
+        expect(execMock).toHaveBeenCalled();
+        const cmd = execMock.mock.calls[0][0];
+        expect(cmd).toContain('msfconsole');
+    });
 });
