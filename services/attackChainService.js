@@ -572,7 +572,11 @@ class AttackChainService extends EventEmitter {
                     try {
                         // 1. Prepare Exploit
                         const exploitData = ExploitDbSyncService.getExploitCode(exploit.id);
-                        if (!exploitData || !exploitData.code) {
+                        const isMetasploitModule = exploit.source === 'metasploit';
+
+                        // Non-metasploit exploits require local code to execute.
+                        // Metasploit exploits are executed via module path + resource script.
+                        if ((!exploitData || !exploitData.code) && !isMetasploitModule) {
                             findings.push({
                                 type: 'info',
                                 category: 'Exploit übersprungen',
@@ -584,7 +588,7 @@ class AttackChainService extends EventEmitter {
                         }
 
                         // Skip non-executable formats
-                        if (['text', 'txt'].includes(exploitData.language)) {
+                        if (exploitData && ['text', 'txt'].includes(exploitData.language) && !isMetasploitModule) {
                             findings.push({
                                 type: 'info',
                                 category: 'Exploit übersprungen',
@@ -595,11 +599,13 @@ class AttackChainService extends EventEmitter {
                             continue;
                         }
 
+                        const exploitLanguage = exploitData?.language || (isMetasploitModule ? 'ruby' : null);
+
                         // Substitute placeholders
-                        let code = exploitData.code;
+                        let code = exploitData?.code || '';
 
                         // Auto-convert Python 2 to 3
-                        if (exploitData.language === 'python') {
+                        if (exploitLanguage === 'python') {
                             // Convert print statements: print "..." -> print("...")
                             code = code.replace(/^\s*print\b(?!\s*\()(.*)$/gm, (match, p1) => {
                                 const indent = match.match(/^\s*/)[0];
@@ -644,7 +650,7 @@ except:
                         }
 
                         // Inject common C headers if missing and sanitize
-                        if (exploitData.language === 'c') {
+                        if (exploitLanguage === 'c') {
                             const commonHeaders = [
                                 '<stdlib.h>', '<string.h>', '<unistd.h>',
                                 '<arpa/inet.h>', '<sys/socket.h>', '<netinet/in.h>',
@@ -749,12 +755,12 @@ except:
                         let ext = '.txt';
                         let filename = 'exploit';
 
-                        if (exploitData.language === 'python') ext = '.py';
-                        else if (exploitData.language === 'ruby') ext = '.rb';
-                        else if (exploitData.language === 'bash') ext = '.sh';
-                        else if (exploitData.language === 'perl') ext = '.pl';
-                        else if (exploitData.language === 'c') ext = '.c';
-                        else if (exploitData.language === 'java') {
+                        if (exploitLanguage === 'python') ext = '.py';
+                        else if (exploitLanguage === 'ruby') ext = '.rb';
+                        else if (exploitLanguage === 'bash') ext = '.sh';
+                        else if (exploitLanguage === 'perl') ext = '.pl';
+                        else if (exploitLanguage === 'c') ext = '.c';
+                        else if (exploitLanguage === 'java') {
                             ext = '.java';
                             // Extract class name
                             const match = code.match(/public\s+class\s+(\w+)/);
@@ -772,16 +778,26 @@ except:
                         }
 
                         // 3. Execute
-                        logger.info(`Executing exploit ${exploit.id} (${exploitData.language}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
+                        logger.info(`Executing exploit ${exploit.id} (${exploitLanguage || 'unknown'}) for ${targetIp}:${targetPort} [Confidence: ${exploit.match_confidence || 'N/A'}%]`);
 
                         let cmd = '';
                         // Metasploit Execution Wrapper - use msfconsole -r for reliable execution
-                        if (exploit.source === 'metasploit' || (exploitData.language === 'ruby' && exploitData.code.includes('Msf::'))) {
+                        if (isMetasploitModule || (exploitLanguage === 'ruby' && exploitData?.code?.includes('Msf::'))) {
                             const msfRoot = path.join(__dirname, '..', 'data', 'metasploit');
                             const msfConsole = path.join(msfRoot, 'msfconsole');
 
                             // Derive the module path from the exploit_db_id (e.g. "exploits/windows/smb/ms08_067_netapi")
-                            const modulePath = exploit.exploit_db_id || '';
+                            const modulePath = (exploit.exploit_db_id || '').trim();
+                            if (!modulePath) {
+                                findings.push({
+                                    type: 'error',
+                                    category: 'Metasploit-Konfiguration',
+                                    title: `Modulpfad fehlt: ${exploit.title}`,
+                                    details: 'exploit_db_id ist leer. Metasploit-Modul kann nicht gestartet werden.',
+                                    severity: 'high'
+                                });
+                                continue;
+                            }
 
                             // Build msfconsole resource commands
                             const rcLines = [];
@@ -894,7 +910,7 @@ except:
                                     findings.push({
                                         type: 'error',
                                         category: 'Metasploit nicht bereit',
-                                        details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhaengigkeiten (Gems) sind nicht installiert. Bitte fuehren Sie die Metasploit-Synchronisation erneut durch (DB Update - Metasploit) - dabei werden die Gems automatisch installiert. Pruefen Sie auch: Ruby >= 2.7, Bundler >= 2.5, Build-Tools (gcc, g++, make), libpq-dev, libxml2-dev, libxslt1-dev.',
+                                        title: 'Ruby-Gems fehlen',
                                         details: 'Metasploit Framework ist heruntergeladen, aber die Ruby-Abhängigkeiten (Gems) sind nicht installiert. Bitte führen Sie die Metasploit-Synchronisation erneut durch (DB Update → Metasploit) – dabei werden die Gems automatisch installiert.',
                                         severity: 'high'
                                     });
@@ -925,12 +941,12 @@ except:
                                 cmd = 'msfconsole -q -r "' + rcFile + '"';
                             }
                         }
-                        else if (exploitData.language === 'python') cmd = 'python3 "' + tempFile + '"';
-                        else if (exploitData.language === 'ruby') cmd = 'ruby "' + tempFile + '"';
-                        else if (exploitData.language === 'bash') cmd = 'bash "' + tempFile + '"';
-                        else if (exploitData.language === 'perl') cmd = 'perl "' + tempFile + '"';
+                        else if (exploitLanguage === 'python') cmd = 'python3 "' + tempFile + '"';
+                        else if (exploitLanguage === 'ruby') cmd = 'ruby "' + tempFile + '"';
+                        else if (exploitLanguage === 'bash') cmd = 'bash "' + tempFile + '"';
+                        else if (exploitLanguage === 'perl') cmd = 'perl "' + tempFile + '"';
 
-                        else if (exploitData.language === 'java') {
+                        else if (exploitLanguage === 'java') {
                             // Check if javac exists
                             try {
                                 await execPromise('which javac');
@@ -948,12 +964,12 @@ except:
                             await execPromise(`javac "${tempFile}"`);
                             cmd = `java -cp "${classPath}" ${filename}`;
                         }
-                        else if (exploitData.language === 'c') {
+                        else if (exploitLanguage === 'c') {
                             const binFile = path.join(tmpDir, 'exploit.bin');
                             await execPromise(`gcc -w -fno-stack-protector -z execstack "${tempFile}" -o "${binFile}"`);
                             cmd = `"${binFile}"`;
                         } else {
-                            throw new Error(`Unsupported language: ${exploitData.language}`);
+                            throw new Error(`Unsupported language: ${exploitLanguage}`);
                         }
 
                         // Run with timeout (increased to 10 minutes for slow environments)
