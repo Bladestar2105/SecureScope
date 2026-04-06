@@ -163,6 +163,56 @@ describe('AttackChainService - Auxiliary Module Filtering', () => {
         expect(exploitSteps[0].name).toContain('Valid Exploit');
     });
 
+    test('autoAttack should filter platform-incompatible exploits when target OS is known', async () => {
+        const scanId = 1;
+        const targetIp = '192.168.178.231';
+        const userId = 1;
+
+        ExploitService.getMatchedExploitsForTarget.mockReturnValue([
+            {
+                exploit_id: 11,
+                exploit_title: 'Windows SMB RCE',
+                exploit_db_id: 'exploits/windows/smb/ms08_067_netapi',
+                exploit_code: 'code',
+                source: 'metasploit',
+                platform: 'windows',
+                match_confidence: 100,
+                port: 445
+            },
+            {
+                exploit_id: 12,
+                exploit_title: 'Linux FTP Exploit',
+                exploit_db_id: 'exploits/linux/ftp/sample',
+                exploit_code: 'code',
+                source: 'metasploit',
+                platform: 'linux',
+                match_confidence: 100,
+                port: 21
+            }
+        ]);
+
+        // Detected target hints indicate Windows
+        ExploitService.getAttackableSummary.mockReturnValue([
+            { service: 'microsoft-ds', os: 'Windows XP', version: '5.1', port: 445, hasExploits: true },
+            { service: 'ftp', os: 'Windows XP', version: '5.1', port: 21, hasExploits: true }
+        ]);
+
+        AttackChainService.executeChain = jest.fn().mockResolvedValue({
+            executionId: 1,
+            status: 'running',
+            totalSteps: 4
+        });
+
+        await AttackChainService.autoAttack(scanId, targetIp, userId);
+
+        const createCall = AttackChainService.create.mock.calls[0][0];
+        const exploitSteps = createCall.steps.filter(s => s.type === 'exploit');
+
+        expect(exploitSteps.length).toBe(1);
+        expect(exploitSteps[0].name).toContain('Windows SMB RCE');
+        expect(exploitSteps[0].name).not.toContain('Linux FTP Exploit');
+    });
+
     test('_executeStep should NOT set LHOST/LPORT for auxiliary modules', async () => {
         const step = {
             type: 'exploit',
